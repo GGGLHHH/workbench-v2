@@ -3,12 +3,16 @@ import { defineConfig, type PluginOption } from 'vite'
 import { tanstackRouter } from '@tanstack/router-plugin/vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
+import { codeInspectorPlugin } from 'code-inspector-plugin'
 import { openapiCodegen } from 'vite-plugin-openapi-codegen'
 
 // workbench-v2：独立仓，通过 pnpm link: 以 TS 源码消费 @gedatou/{editor,shared}（改库即时生效）。
 // dedupe 强制 react/remotion/base-ui/zustand 等单实例——否则库副本与 app 副本分裂，context 断裂。
 export default defineConfig({
   plugins: [
+    // 开发期「点元素跳源码」:按住 Alt+Shift 点击页面元素 → 在编辑器打开对应组件源码。
+    // 仅 dev 生效(生产 build 自动关闭)。
+    codeInspectorPlugin({ bundler: 'vite' }),
     // 文件式路由:从 src/routes 生成 src/routeTree.gen.ts(必须在 react() 之前)
     // as PluginOption:规避 tsc 对 router 插件复杂类型的 TS2321(深度比较栈溢出)
     tanstackRouter({ target: 'react', autoCodeSplitting: true }) as PluginOption,
