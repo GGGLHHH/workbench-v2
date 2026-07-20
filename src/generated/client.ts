@@ -3,8 +3,8 @@
 
 import type { ApiRequestOptions } from "@/lib/api-client";
 import { requestJson, requestVoid } from "@/lib/api-client";
-import type { BffLoginRequest, BffProject, BffProjectPage, BffProjectSaveRequest, BffProjectSaveResponse, BffSession, GetBffProjectPath, ListBffProjectsQuery, LogoutBffSessionResponse, SaveBffProjectPath } from "./api-types";
-import { listBffProjects as buildListBffProjectsPath, getBffProject as buildGetBffProjectPath, saveBffProject as buildSaveBffProjectPath, getBffSession as buildGetBffSessionPath, loginBffSession as buildLoginBffSessionPath, logoutBffSession as buildLogoutBffSessionPath } from "./api";
+import type { BffLoginRequest, BffProject, BffProjectPage, BffProjectSaveRequest, BffProjectSaveResponse, BffProjectStats, BffSession, GetBffProjectPath, ListBffProjectsQuery, LogoutBffSessionResponse, SaveBffProjectPath } from "./api-types";
+import { listBffProjects as buildListBffProjectsPath, getBffProjectStats as buildGetBffProjectStatsPath, getBffProject as buildGetBffProjectPath, saveBffProject as buildSaveBffProjectPath, getBffSession as buildGetBffSessionPath, loginBffSession as buildLoginBffSessionPath, logoutBffSession as buildLogoutBffSessionPath } from "./api";
 type RuntimeRequestOptions = Omit<ApiRequestOptions, "json" | "method" | "searchParams" | "signal">;
 function buildSearchParams(query: Record<string, unknown> | undefined): URLSearchParams | undefined {
     if (query === undefined)
@@ -40,6 +40,19 @@ export function listBffProjects(options: ListBffProjectsOptions, requestOptions:
         ...requestOptions,
         method: "GET",
         searchParams: buildSearchParams(options.query),
+        signal: options.signal
+    });
+}
+export interface GetBffProjectStatsOptions {
+    query?: never;
+    path?: never;
+    body?: never;
+    signal?: AbortSignal;
+}
+export function getBffProjectStats(options: GetBffProjectStatsOptions, requestOptions: RuntimeRequestOptions = {}): Promise<BffProjectStats> {
+    return requestJson<BffProjectStats>(buildGetBffProjectStatsPath(), {
+        ...requestOptions,
+        method: "GET",
         signal: options.signal
     });
 }

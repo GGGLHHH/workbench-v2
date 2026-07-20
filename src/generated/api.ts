@@ -6,6 +6,9 @@ import type { GetBffProjectPath, SaveBffProjectPath } from "./api-types";
 export function listBffProjects(): string {
     return "/bff/projects";
 }
+export function getBffProjectStats(): string {
+    return "/bff/projects/stats";
+}
 export function getBffProject(params: GetBffProjectPath): string {
     return `/bff/projects/${params.id}`;
 }
