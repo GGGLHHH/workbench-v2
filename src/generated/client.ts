@@ -3,8 +3,8 @@
 
 import type { ApiRequestOptions } from "@/lib/api-client";
 import { requestJson, requestVoid } from "@/lib/api-client";
-import type { BffLoginRequest, BffProject, BffProjectPage, BffProjectSaveRequest, BffProjectSaveResponse, BffProjectStats, BffProjectStatusResponse, BffSession, BffStatusActionRequest, ChangeBffProjectStatusPath, GetBffProjectPath, ListBffProjectsQuery, LogoutBffSessionResponse, SaveBffProjectPath } from "./api-types";
-import { listBffProjects as buildListBffProjectsPath, getBffProjectStats as buildGetBffProjectStatsPath, getBffProject as buildGetBffProjectPath, saveBffProject as buildSaveBffProjectPath, changeBffProjectStatus as buildChangeBffProjectStatusPath, getBffSession as buildGetBffSessionPath, loginBffSession as buildLoginBffSessionPath, logoutBffSession as buildLogoutBffSessionPath, refreshBffSession as buildRefreshBffSessionPath } from "./api";
+import type { BffLoginRequest, BffProject, BffProjectMetaRequest, BffProjectMetaResponse, BffProjectOptions, BffProjectPage, BffProjectSaveRequest, BffProjectSaveResponse, BffProjectStats, BffProjectStatusResponse, BffSession, BffStatusActionRequest, ChangeBffProjectStatusPath, GetBffProjectPath, ListBffProjectsQuery, LogoutBffSessionResponse, SaveBffProjectMetaPath, SaveBffProjectPath } from "./api-types";
+import { getBffProjectOptions as buildGetBffProjectOptionsPath, listBffProjects as buildListBffProjectsPath, getBffProjectStats as buildGetBffProjectStatsPath, getBffProject as buildGetBffProjectPath, saveBffProject as buildSaveBffProjectPath, saveBffProjectMeta as buildSaveBffProjectMetaPath, changeBffProjectStatus as buildChangeBffProjectStatusPath, getBffSession as buildGetBffSessionPath, loginBffSession as buildLoginBffSessionPath, logoutBffSession as buildLogoutBffSessionPath, refreshBffSession as buildRefreshBffSessionPath } from "./api";
 type RuntimeRequestOptions = Omit<ApiRequestOptions, "json" | "method" | "searchParams" | "signal">;
 function buildSearchParams(query: Record<string, unknown> | undefined): URLSearchParams | undefined {
     if (query === undefined)
@@ -29,6 +29,19 @@ function buildSearchParams(query: Record<string, unknown> | undefined): URLSearc
     return hasParams ? searchParams : undefined;
 }
 // 
+export interface GetBffProjectOptionsOptions {
+    query?: never;
+    path?: never;
+    body?: never;
+    signal?: AbortSignal;
+}
+export function getBffProjectOptions(options: GetBffProjectOptionsOptions, requestOptions: RuntimeRequestOptions = {}): Promise<BffProjectOptions> {
+    return requestJson<BffProjectOptions>(buildGetBffProjectOptionsPath(), {
+        ...requestOptions,
+        method: "GET",
+        signal: options.signal
+    });
+}
 export interface ListBffProjectsOptions {
     query?: ListBffProjectsQuery;
     path?: never;
@@ -77,6 +90,20 @@ export interface SaveBffProjectOptions {
 }
 export function saveBffProject(options: SaveBffProjectOptions, requestOptions: RuntimeRequestOptions = {}): Promise<BffProjectSaveResponse> {
     return requestJson<BffProjectSaveResponse>(buildSaveBffProjectPath(options.path), {
+        ...requestOptions,
+        method: "PUT",
+        json: options.body,
+        signal: options.signal
+    });
+}
+export interface SaveBffProjectMetaOptions {
+    query?: never;
+    path: SaveBffProjectMetaPath;
+    body: BffProjectMetaRequest;
+    signal?: AbortSignal;
+}
+export function saveBffProjectMeta(options: SaveBffProjectMetaOptions, requestOptions: RuntimeRequestOptions = {}): Promise<BffProjectMetaResponse> {
+    return requestJson<BffProjectMetaResponse>(buildSaveBffProjectMetaPath(options.path), {
         ...requestOptions,
         method: "PUT",
         json: options.body,

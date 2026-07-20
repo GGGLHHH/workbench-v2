@@ -20,5 +20,7 @@ export const queryKeys = {
     list: (params: ProjectListParams) => [...projectsRoot, 'list', params] as const,
     stats: () => [...projectsRoot, 'stats'] as const,
     detail: (id: string) => [...projectsRoot, 'detail', id] as const,
+    // 表单下拉候选:全局一份,不随项目变 → 平级于 list/detail
+    options: () => [...projectsRoot, 'options'] as const,
   },
 }

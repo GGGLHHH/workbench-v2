@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { formatDistanceToNow } from 'date-fns'
+import { format, formatDistanceToNow } from 'date-fns'
 import {
   Building2,
   ChevronDown,
@@ -7,20 +7,29 @@ import {
   Clapperboard,
   Clock,
   CloudDownload,
+  ExternalLink,
+  Eye,
   FolderClosed,
   Image as ImageIcon,
   Info,
   Loader2,
+  MessageSquare,
   PanelLeftClose,
   PanelLeftOpen,
+  Pencil,
+  Share2,
   User,
 } from 'lucide-react'
+
+import type { BffProject, BffProjectDetail, BffProjectMetaRequest, BffProjectOptions } from '@/generated/api-types'
 
 import {
   useChangeProjectStatus,
   useInfiniteProjects,
   useProject,
+  useProjectOptions,
   useProjectStats,
+  useSaveProjectMeta,
 } from '@/api/projects/projects'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
@@ -34,6 +43,9 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { SearchInput } from '@/components/form/search-input'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select'
 
 // 手写双层侧边栏(互斥展开):第一层=项目列表(对齐 xchangeai-workbench 卡片:缩略图 +
 // 负责人/机构 + resources/clips/时长 + 状态徽章 + 更新时间;搜索 + 状态筛选 tab + 计数 +
@@ -138,6 +150,21 @@ const relTime = (iso: string) => {
     return iso
   }
 }
+
+// 绝对时间。workbench 只有相对时间("Updated 3d ago"),详情面板补上准确时刻。
+const absTime = (iso: string) => {
+  try {
+    return format(new Date(iso), 'yyyy-MM-dd HH:mm')
+  } catch {
+    return iso
+  }
+}
+
+// 价格:对齐 xchangeai-workbench 服务端 formatPrice(Intl USD、无小数)
+const usd = (n: number | null | undefined) =>
+  typeof n === 'number'
+    ? new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(n)
+    : null
 
 // 排序选项:created/updated 走服务端;name(A–Z/Z–A)由前端在已加载项上排
 // (xchangeai 只支持时间字段服务端排序)。默认按创建时间倒序。
@@ -283,7 +310,10 @@ export function ProjectNav() {
           <DetailContent
             loading={detail.isPending && Boolean(selectedId)}
             project={detail.data}
+            visible={detailExpanded}
             onBack={() => setActive('list')}
+            onChangeStatus={(id, action) => changeStatus.mutate({ id, action })}
+            statusBusy={changeStatus.isPending && changeStatus.variables?.id === selectedId}
           />
         }
       />
@@ -622,6 +652,36 @@ function ProjectStatusMenu({
   )
 }
 
+// 缩略图(列表卡片 + 详情共用)。视频资产无图片海报 → 用 <video> 首帧(#t=0.1 避开黑帧)。
+function Thumb({ url, kind, className }: { url: string | null; kind: string | null; className?: string }) {
+  return (
+    <span
+      className={cn(
+        'flex shrink-0 items-center justify-center overflow-hidden rounded-md bg-muted text-muted-foreground',
+        className,
+      )}
+    >
+      {url ? (
+        kind === 'video' ? (
+          <video src={`${url}#t=0.1`} muted playsInline preload="metadata" className="size-full object-cover" />
+        ) : (
+          <img
+            src={url}
+            alt=""
+            loading="lazy"
+            className="size-full object-cover"
+            onError={(event) => {
+              event.currentTarget.style.display = 'none'
+            }}
+          />
+        )
+      ) : (
+        <ImageIcon className="size-5" />
+      )}
+    </span>
+  )
+}
+
 function ProjectCard({
   project,
   active,
@@ -643,32 +703,7 @@ function ProjectCard({
       )}
     >
       <button type="button" onClick={onOpen} className="flex w-full gap-3 p-2.5 text-left">
-        <span className="flex size-14 shrink-0 items-center justify-center overflow-hidden rounded-md bg-muted text-muted-foreground">
-          {project.thumbnailUrl ? (
-            project.thumbnailKind === 'video' ? (
-              // 视频资产无图片海报 → 用 <video> 首帧(#t=0.1 避开黑帧)当缩略图
-              <video
-                src={`${project.thumbnailUrl}#t=0.1`}
-                muted
-                playsInline
-                preload="metadata"
-                className="size-full object-cover"
-              />
-            ) : (
-              <img
-                src={project.thumbnailUrl}
-                alt=""
-                loading="lazy"
-                className="size-full object-cover"
-                onError={(event) => {
-                  event.currentTarget.style.display = 'none'
-                }}
-              />
-            )
-          ) : (
-            <ImageIcon className="size-5" />
-          )}
-        </span>
+        <Thumb url={project.thumbnailUrl} kind={project.thumbnailKind} className="size-14" />
         <span className="flex min-w-0 flex-1 flex-col gap-1">
           <span className="truncate text-sm font-semibold" title={project.title}>
             {project.title}
@@ -706,38 +741,389 @@ function ProjectCard({
   )
 }
 
+// 分组标题 + 一列 label/value 行。value 为空显示 "—"(只读面板留占位比隐藏行更稳定,
+// 不会因为数据缺失而让面板高度乱跳)。
+function Group({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <section className="flex flex-col gap-1.5">
+      <h3 className="text-xs font-medium tracking-wide text-muted-foreground uppercase">{title}</h3>
+      <dl className="flex flex-col gap-1">{children}</dl>
+    </section>
+  )
+}
+
+function Field({ label, value }: { label: string; value: React.ReactNode }) {
+  return (
+    <div className="flex items-baseline justify-between gap-3 text-xs">
+      <dt className="shrink-0 text-muted-foreground">{label}</dt>
+      <dd className="min-w-0 truncate text-right">{value || <span className="text-muted-foreground">—</span>}</dd>
+    </div>
+  )
+}
+
+// beds/baths/sqft 三格,对齐 workbench 的 .nle-three-fields
+function Metric({ label, value }: { label: string; value: React.ReactNode }) {
+  return (
+    <div className="flex flex-col items-center gap-0.5 rounded-md border py-2">
+      <span className="text-sm font-semibold tabular-nums">{value ?? '—'}</span>
+      <span className="text-[10px] tracking-wide text-muted-foreground uppercase">{label}</span>
+    </div>
+  )
+}
+
+// 资产缩略图网格。workbench 项目级没有这个网格(它把远端资产下载成本地照片再进图库),
+// 这里 detail 已经带回 url,直接铺出来比只显示 "N resources" 有用得多。
+function AssetGrid({ assets }: { assets: NonNullable<BffProjectDetail['assets']> }) {
+  const groups = [
+    { key: 'creator', label: 'Resources' },
+    { key: 'agent', label: 'Clips' },
+  ] as const
+  return (
+    <>
+      {groups.map(({ key, label }) => {
+        const list = assets.filter((a) => a.group === key)
+        if (list.length === 0) return null
+        return (
+          <Group key={key} title={`${label} (${list.length})`}>
+            <div className="grid grid-cols-4 gap-1.5">
+              {list.map((a) => (
+                <a
+                  key={a.id}
+                  href={a.url}
+                  target="_blank"
+                  rel="noreferrer"
+                  title={[a.name, a.tags?.join(', ')].filter(Boolean).join(' · ') || undefined}
+                  className="relative aspect-square overflow-hidden rounded-md ring-offset-background hover:ring-2 hover:ring-ring focus-visible:ring-2 focus-visible:ring-ring"
+                >
+                  <Thumb url={a.url} kind={a.kind} className="size-full rounded-none" />
+                  {a.commentCount > 0 ? (
+                    <span className="absolute right-0.5 bottom-0.5 inline-flex items-center gap-0.5 rounded bg-black/70 px-1 text-[10px] text-white">
+                      <MessageSquare className="size-2.5" />
+                      {a.commentCount}
+                    </span>
+                  ) : null}
+                </a>
+              ))}
+            </div>
+          </Group>
+        )
+      })}
+    </>
+  )
+}
+
+// 表单一行。等价 workbench 的 .nle-control-group:label 直接包住控件,
+// 天然关联、不用手配 htmlFor/id。
+function Row({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <Label className="flex flex-col items-stretch gap-1">
+      <span className="text-xs font-normal text-muted-foreground">{label}</span>
+      {children}
+    </Label>
+  )
+}
+
+const num = (v: string) => (v.trim() === '' ? null : Number(v))
+
+// 编辑表单:1:1 对齐 xchangeai-workbench 的 ProjectMetaPanel(字段、顺序、行分组、下拉、
+// Cancel/Save details)。下游是 PUT 整体替换,所以表单持有全量值一起提交。
+function MetaForm({
+  detail,
+  options,
+  optionsLoading,
+  saving,
+  onCancel,
+  onSave,
+}: {
+  detail: BffProjectDetail
+  options: BffProjectOptions | undefined
+  optionsLoading: boolean
+  saving: boolean
+  onCancel: () => void
+  onSave: (meta: BffProjectMetaRequest) => void
+}) {
+  const [v, setV] = useState({
+    listingUrl: detail.listingUrl ?? '',
+    address: detail.address ?? '',
+    address2: detail.address2 ?? '',
+    city: detail.city ?? '',
+    state: detail.state ?? '',
+    postalCode: detail.postalCode ?? '',
+    propertyType: detail.propertyType ?? '',
+    price: detail.price?.toString() ?? '',
+    videoStyle: detail.videoStyle ?? '',
+    bedrooms: detail.bedrooms?.toString() ?? '',
+    bathrooms: detail.bathrooms?.toString() ?? '',
+    livingAreaSqft: detail.livingAreaSqft?.toString() ?? '',
+    agencyId: detail.agencyId ?? '',
+    agentId: detail.agentId ?? '',
+    assigneeId: detail.assigneeId ?? '',
+  })
+  const set = (k: keyof typeof v) => (e: { target: { value: string } }) =>
+    setV((cur) => ({ ...cur, [k]: e.target.value }))
+
+  const selects = [
+    { key: 'agencyId', label: 'Agency', empty: 'No agency', items: options?.agencies },
+    { key: 'agentId', label: 'Agent', empty: 'No agent', items: options?.agents },
+    { key: 'assigneeId', label: 'Assigned creator', empty: 'Unassigned', items: options?.assignees },
+  ] as const
+
+  return (
+    <form
+      className="flex flex-col gap-3"
+      onSubmit={(e) => {
+        e.preventDefault()
+        if (saving) return
+        onSave({
+          listingUrl: v.listingUrl.trim(),
+          address: v.address.trim(),
+          address2: v.address2.trim(),
+          city: v.city.trim(),
+          state: v.state.trim(),
+          postalCode: v.postalCode.trim(),
+          propertyType: v.propertyType.trim(),
+          videoStyle: v.videoStyle.trim(),
+          price: Number(v.price) || 0,
+          bedrooms: num(v.bedrooms),
+          bathrooms: num(v.bathrooms),
+          livingAreaSqft: num(v.livingAreaSqft),
+          agencyId: v.agencyId || null,
+          agentId: v.agentId || null,
+          assigneeId: v.assigneeId || null,
+        })
+      }}
+    >
+      <Row label="Listing URL">
+        <Input type="url" className="h-8" value={v.listingUrl} onChange={set('listingUrl')} />
+      </Row>
+      <Row label="Address">
+        <Input className="h-8" value={v.address} onChange={set('address')} />
+      </Row>
+      <Row label="Address line 2">
+        <Input className="h-8" value={v.address2} onChange={set('address2')} />
+      </Row>
+      <div className="grid grid-cols-2 gap-2">
+        <Row label="City">
+          <Input className="h-8" value={v.city} onChange={set('city')} />
+        </Row>
+        <Row label="State">
+          <Input className="h-8" value={v.state} onChange={set('state')} />
+        </Row>
+      </div>
+      <div className="grid grid-cols-2 gap-2">
+        <Row label="Postal code">
+          <Input className="h-8" value={v.postalCode} onChange={set('postalCode')} />
+        </Row>
+        <Row label="Property type">
+          <Input className="h-8" value={v.propertyType} onChange={set('propertyType')} />
+        </Row>
+      </div>
+      <div className="grid grid-cols-2 gap-2">
+        <Row label="List price">
+          <Input type="number" min="0" className="h-8" value={v.price} onChange={set('price')} />
+        </Row>
+        <Row label="Video style">
+          <Input className="h-8" value={v.videoStyle} onChange={set('videoStyle')} />
+        </Row>
+      </div>
+      <div className="grid grid-cols-3 gap-2">
+        <Row label="Beds">
+          <Input type="number" min="0" step="any" className="h-8" value={v.bedrooms} onChange={set('bedrooms')} />
+        </Row>
+        <Row label="Baths">
+          <Input type="number" min="0" step="any" className="h-8" value={v.bathrooms} onChange={set('bathrooms')} />
+        </Row>
+        <Row label="Sqft">
+          <Input
+            type="number"
+            min="0"
+            className="h-8"
+            value={v.livingAreaSqft}
+            onChange={set('livingAreaSqft')}
+          />
+        </Row>
+      </div>
+      {selects.map((s) => (
+        <Row key={s.key} label={s.label}>
+          <NativeSelect className="h-8" disabled={optionsLoading} value={v[s.key]} onChange={set(s.key)}>
+            <NativeSelectOption value="">{optionsLoading ? 'Loading…' : s.empty}</NativeSelectOption>
+            {(s.items ?? []).map((o) => (
+              <NativeSelectOption key={o.id} value={o.id}>
+                {o.name}
+              </NativeSelectOption>
+            ))}
+          </NativeSelect>
+        </Row>
+      ))}
+      <div className="flex justify-end gap-2 pt-1">
+        <Button type="button" variant="ghost" size="sm" className="h-8" disabled={saving} onClick={onCancel}>
+          Cancel
+        </Button>
+        <Button type="submit" size="sm" className="h-8 gap-1" disabled={saving}>
+          {saving ? <Loader2 className="size-3.5 animate-spin" /> : null} Save details
+        </Button>
+      </div>
+    </form>
+  )
+}
+
+// 详情面板:对齐 xchangeai-workbench 的 "Project details" 表单(ProjectMetaPanel)+ TopBar 摘要。
+// 那边是弹窗,这里就地切换 view/edit —— 同样的元素,少一层模态。
 function DetailContent({
   loading,
   project,
+  visible,
   onBack,
+  onChangeStatus,
+  statusBusy,
 }: {
   loading: boolean
-  project: { id: string; name: string; updatedAt: string; state: unknown } | undefined
+  project: BffProject | undefined
+  visible: boolean
   onBack: () => void
+  onChangeStatus: (id: string, action: string) => void
+  statusBusy: boolean
 }) {
+  const [editing, setEditing] = useState(false)
+  const options = useProjectOptions(visible && editing)
+  const saveMeta = useSaveProjectMeta()
+  const d = project?.detail
+
+  // 换项目时退出编辑态,免得把 A 的草稿套在 B 上
+  const id = project?.id
+  useEffect(() => {
+    setEditing(false)
+  }, [id])
+
+  // 地址两行:街道(address + address2)/ 城市州邮编 —— 与 BFF title() 的拼法同源
+  const street = d ? [d.address, d.address2].filter(Boolean).join(' ') : ''
+  const locality = d ? [[d.city, d.state].filter(Boolean).join(', '), d.postalCode].filter(Boolean).join(' ') : ''
+
   return (
     <PanelBody>
       <div className="flex h-11 shrink-0 items-center gap-2 border-b px-3">
         <Info className="size-4" />
         <span className="flex-1 truncate text-sm font-medium">详情</span>
+        {d && !editing ? (
+          <Button variant="ghost" size="sm" className="h-7 gap-1 px-2 text-xs" onClick={() => setEditing(true)}>
+            <Pencil className="size-3.5" /> 编辑
+          </Button>
+        ) : null}
         <Button variant="ghost" size="sm" className="h-7 gap-1 px-2 text-xs" onClick={onBack}>
           <ChevronLeft className="size-3.5" /> 列表
         </Button>
       </div>
       <ScrollArea className="min-h-0 flex-1">
         <div className="p-3">
-          {loading || !project ? (
+          {loading || !project || !d ? (
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
               <Loader2 className="size-4 animate-spin" /> 加载中…
             </div>
+          ) : editing ? (
+            <MetaForm
+              key={project.id}
+              detail={d}
+              options={options.data}
+              optionsLoading={options.isPending}
+              saving={saveMeta.isPending}
+              onCancel={() => setEditing(false)}
+              onSave={(meta) =>
+                saveMeta.mutate({ id: project.id, meta }, { onSuccess: () => setEditing(false) })
+              }
+            />
           ) : (
             <div className="flex flex-col gap-4">
-              <div>
-                <div className="text-base font-semibold">{project.name}</div>
-                <div className="mt-0.5 text-xs text-muted-foreground">更新于 {relTime(project.updatedAt)}</div>
+              {/* 概要:缩略图 + 标题 + 状态菜单(与列表卡片同一个 FSM 菜单) */}
+              <div className="flex gap-3">
+                <Thumb url={d.thumbnailUrl ?? null} kind={d.thumbnailKind ?? null} className="size-16" />
+                <div className="flex min-w-0 flex-1 flex-col items-start gap-1.5">
+                  <div className="line-clamp-2 text-sm font-semibold" title={project.name}>
+                    {project.name}
+                  </div>
+                  <ProjectStatusMenu
+                    status={d.status}
+                    busy={statusBusy}
+                    onAction={(action) => onChangeStatus(project.id, action)}
+                  />
+                </div>
               </div>
+
+              {/* 统计:对齐 TopBar 的 "N photos · N clips · duration",再补评论/转发/可见性 */}
+              <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground">
+                <span className="inline-flex items-center gap-1">
+                  <ImageIcon className="size-3" /> {d.resourceCount} resources
+                </span>
+                <span className="inline-flex items-center gap-1">
+                  <Clapperboard className="size-3" /> {d.clipCount} clips
+                </span>
+                <span className="inline-flex items-center gap-1">
+                  <Clock className="size-3" /> {duration(d.durationSeconds)}
+                </span>
+                <span className="inline-flex items-center gap-1">
+                  <MessageSquare className="size-3" /> {d.commentCount} comments
+                </span>
+                <span className="inline-flex items-center gap-1">
+                  <Share2 className="size-3" /> {d.forwardCount} forwards
+                </span>
+                <span className="inline-flex items-center gap-1">
+                  <Eye className="size-3" /> {statusLabel(d.visibility || 'unknown')}
+                </span>
+              </div>
+
               <Separator />
-              <p className="text-xs text-muted-foreground">详情面板后续再细化(选中项目 → 加载进编辑器等)。</p>
+
+              <Group title="Listing">
+                <Field label="List price" value={usd(d.price)} />
+                <Field label="Address" value={street} />
+                <Field label="City / State" value={locality} />
+                <Field label="Property type" value={d.propertyType} />
+                <Field label="Video style" value={d.videoStyle} />
+                <Field
+                  label="Listing URL"
+                  value={
+                    d.listingUrl ? (
+                      <a
+                        href={d.listingUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="inline-flex max-w-full items-center gap-1 truncate underline underline-offset-2 hover:text-foreground"
+                      >
+                        <span className="truncate">{d.listingUrl}</span>
+                        <ExternalLink className="size-3 shrink-0" />
+                      </a>
+                    ) : null
+                  }
+                />
+              </Group>
+
+              <div className="grid grid-cols-3 gap-2">
+                <Metric label="Beds" value={d.bedrooms} />
+                <Metric label="Baths" value={d.bathrooms} />
+                <Metric label="Sqft" value={d.livingAreaSqft?.toLocaleString()} />
+              </div>
+
+              <Separator />
+
+              <Group title="People">
+                <Field label="Agency" value={d.agency} />
+                <Field label="Agent" value={d.agent} />
+                <Field label="Assigned creator" value={d.assignee} />
+                <Field label="Created by" value={d.createdBy} />
+              </Group>
+
+              {d.assets && d.assets.length > 0 ? (
+                <>
+                  <Separator />
+                  <AssetGrid assets={d.assets} />
+                </>
+              ) : null}
+
+              <Separator />
+
+              <Group title="Timestamps">
+                <Field label="Created" value={absTime(d.createdAt)} />
+                <Field label="Updated" value={`${absTime(d.updatedAt)} (${relTime(d.updatedAt)})`} />
+              </Group>
             </div>
           )}
         </div>

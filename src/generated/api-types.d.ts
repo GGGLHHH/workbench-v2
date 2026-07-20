@@ -98,6 +98,38 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/bff/projects/{id}/meta": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put: operations["saveBffProjectMeta"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/bff/project-options": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getBffProjectOptions"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -132,6 +164,78 @@ export interface components {
                 [key: string]: number;
             };
         };
+        BffProjectAsset: {
+            id: string;
+            group: string;
+            url: string;
+            kind: string;
+            name?: null | string;
+            commentCount: number;
+            tags?: string[];
+        };
+        BffOption: {
+            id: string;
+            name: string;
+        };
+        BffProjectOptions: {
+            agencies: components["schemas"]["BffOption"][];
+            agents: components["schemas"]["BffOption"][];
+            assignees: components["schemas"]["BffOption"][];
+        };
+        BffProjectMetaRequest: {
+            address: string;
+            address2: string;
+            city: string;
+            state: string;
+            postalCode: string;
+            listingUrl: string;
+            propertyType: string;
+            videoStyle: string;
+            price: number;
+            bedrooms?: number | null;
+            bathrooms?: number | null;
+            livingAreaSqft?: number | null;
+            agencyId?: string | null;
+            agentId?: string | null;
+            assigneeId?: string | null;
+        };
+        BffProjectMetaResponse: {
+            name: string;
+            detail: components["schemas"]["BffProjectDetail"];
+        };
+        BffProjectDetail: {
+            status: string;
+            createdAt: string;
+            updatedAt: string;
+            listingUrl?: null | string;
+            address?: null | string;
+            address2?: null | string;
+            city?: null | string;
+            state?: null | string;
+            postalCode?: null | string;
+            propertyType?: null | string;
+            videoStyle?: null | string;
+            price?: null | number;
+            bedrooms?: null | number;
+            bathrooms?: null | number;
+            livingAreaSqft?: null | number;
+            agency?: null | string;
+            agent?: null | string;
+            assignee?: null | string;
+            createdBy?: null | string;
+            agencyId?: null | string;
+            agentId?: null | string;
+            assigneeId?: null | string;
+            visibility?: null | string;
+            forwardCount?: number;
+            commentCount?: number;
+            resourceCount: number;
+            clipCount: number;
+            durationSeconds: number;
+            thumbnailUrl?: null | string;
+            thumbnailKind?: null | string;
+            assets?: components["schemas"]["BffProjectAsset"][];
+        };
         BffProject: {
             id: string;
             name: string;
@@ -139,6 +243,7 @@ export interface components {
             state: {
                 [key: string]: unknown;
             };
+            detail: components["schemas"]["BffProjectDetail"];
             metadata?: {
                 [key: string]: unknown;
             };
@@ -180,6 +285,12 @@ export type BffSession = components['schemas']['BffSession'];
 export type BffLoginRequest = components['schemas']['BffLoginRequest'];
 export type BffProjectSummary = components['schemas']['BffProjectSummary'];
 export type BffProjectStats = components['schemas']['BffProjectStats'];
+export type BffProjectAsset = components['schemas']['BffProjectAsset'];
+export type BffOption = components['schemas']['BffOption'];
+export type BffProjectOptions = components['schemas']['BffProjectOptions'];
+export type BffProjectMetaRequest = components['schemas']['BffProjectMetaRequest'];
+export type BffProjectMetaResponse = components['schemas']['BffProjectMetaResponse'];
+export type BffProjectDetail = components['schemas']['BffProjectDetail'];
 export type BffProject = components['schemas']['BffProject'];
 export type BffProjectSaveRequest = components['schemas']['BffProjectSaveRequest'];
 export type BffProjectSaveResponse = components['schemas']['BffProjectSaveResponse'];
@@ -394,9 +505,56 @@ export interface operations {
             };
         };
     };
+    saveBffProjectMeta: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BffProjectMetaRequest"];
+            };
+        };
+        responses: {
+            /** @description Default Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BffProjectMetaResponse"];
+                };
+            };
+        };
+    };
+    getBffProjectOptions: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Default Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BffProjectOptions"];
+                };
+            };
+        };
+    };
 }
 export type ChangeBffProjectStatusPath = operations['changeBffProjectStatus']['parameters']['path'];
 export type GetBffProjectPath = operations['getBffProject']['parameters']['path'];
 export type ListBffProjectsQuery = operations['listBffProjects']['parameters']['query'];
 export type LogoutBffSessionResponse = operations['logoutBffSession']['responses'][200]['content']['application/json'];
+export type SaveBffProjectMetaPath = operations['saveBffProjectMeta']['parameters']['path'];
 export type SaveBffProjectPath = operations['saveBffProject']['parameters']['path'];

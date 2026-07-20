@@ -3,13 +3,20 @@ import { useInfiniteQuery, useMutation, useQuery } from '@tanstack/react-query'
 import type { InfiniteData } from '@tanstack/react-query'
 import { toast } from 'sonner'
 
-import type { BffProjectPage, BffProjectSaveRequest } from '@/generated/api-types'
+import type {
+  BffProject,
+  BffProjectMetaRequest,
+  BffProjectPage,
+  BffProjectSaveRequest,
+} from '@/generated/api-types'
 import {
   changeBffProjectStatus,
   getBffProject,
+  getBffProjectOptions,
   getBffProjectStats,
   listBffProjects,
   saveBffProject,
+  saveBffProjectMeta,
 } from '@/generated/client'
 import { ApiError } from '@/lib/api-client'
 import { queryClient } from '@/lib/query-client'
@@ -56,6 +63,35 @@ export function useProject(id: string | null) {
     enabled: Boolean(id),
     queryKey: queryKeys.projects.detail(id ?? ''),
     queryFn: () => getBffProject({ path: { id: id! } }),
+  })
+}
+
+// Agency / Agent / Assigned creator 三个下拉的候选。全局共用一份、极少变 → 长 staleTime,
+// 且只在详情面板真正展开(enabled)时才拉,免得列表页白付一次请求。
+export function useProjectOptions(enabled: boolean) {
+  return useQuery({
+    enabled,
+    queryKey: queryKeys.projects.options(),
+    queryFn: () => getBffProjectOptions({}),
+    staleTime: 5 * 60 * 1000,
+  })
+}
+
+// 保存项目元数据。返回的就是新 detail → 直接落缓存,不重拉(对齐乐观更新范式:用返回值校正)。
+// 地址字段会改标题,故列表也要跟着刷新(标题/摘要来自同一份 xchangeai 数据)。
+export function useSaveProjectMeta() {
+  return useMutation({
+    mutationFn: ({ id, meta }: { id: string; meta: BffProjectMetaRequest }) =>
+      saveBffProjectMeta({ path: { id }, body: meta }),
+    onSuccess: ({ name, detail }, { id }) => {
+      queryClient.setQueryData<BffProject>(queryKeys.projects.detail(id), (old) =>
+        old ? { ...old, name, detail } : old,
+      )
+      void queryClient.invalidateQueries({ queryKey: queryKeys.projects.lists() })
+    },
+    onError: (error) => {
+      toast.error(error instanceof Error && error.message ? error.message : '保存失败')
+    },
   })
 }
 
@@ -117,19 +153,28 @@ export function useChangeProjectStatus() {
     },
     onMutate: async ({ id, action }) => {
       const listsKey = queryKeys.projects.lists()
+      const detailKey = queryKeys.projects.detail(id)
       await queryClient.cancelQueries({ queryKey: listsKey })
       const previousLists = queryClient.getQueriesData<InfiniteProjects>({ queryKey: listsKey })
+      const previousDetail = queryClient.getQueryData<BffProject>(detailKey)
       const next = NEXT_STATUS[action]
       if (next) {
         queryClient.setQueriesData<InfiniteProjects>({ queryKey: listsKey }, (old) =>
           old ? withStatus(old, id, next) : old,
         )
+        queryClient.setQueryData<BffProject>(detailKey, (old) =>
+          old ? { ...old, detail: { ...old.detail, status: next } } : old,
+        )
       }
-      return { previousLists }
+      return { previousLists, previousDetail, detailKey }
     },
     onSuccess: (data) => {
       queryClient.setQueriesData<InfiniteProjects>({ queryKey: queryKeys.projects.lists() }, (old) =>
         old ? withStatus(old, data.id, data.status) : old,
+      )
+      // 详情面板的状态徽章走 detail 缓存,不在 list 分片里 —— 同样就地校正,否则从详情改完不动
+      queryClient.setQueryData<BffProject>(queryKeys.projects.detail(data.id), (old) =>
+        old ? { ...old, detail: { ...old.detail, status: data.status } } : old,
       )
     },
     onError: (error, _vars, context) => {
@@ -137,6 +182,7 @@ export function useChangeProjectStatus() {
       for (const [key, data] of context?.previousLists ?? []) {
         queryClient.setQueryData(key, data)
       }
+      if (context?.detailKey) queryClient.setQueryData(context.detailKey, context.previousDetail)
       void queryClient.refetchQueries({ queryKey: queryKeys.projects.lists() })
       toast.error(error instanceof Error && error.message ? error.message : '状态变更失败')
     },
