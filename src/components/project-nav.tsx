@@ -87,6 +87,35 @@ const updatedLabel = (iso: string) => {
   return `Updated ${Math.floor(hours / 24)}d ago`
 }
 
+// scroll-fade:按滚动位置给视口加边缘渐隐 mask —— 只有该方向还有更多内容时才隐,
+// 到边则不隐(纵向=上下,横向=左右)。用于列表上下阴影 + 状态 tab 左右阴影。
+function useScrollFade(ref: React.RefObject<HTMLDivElement | null>, orientation: 'vertical' | 'horizontal') {
+  useEffect(() => {
+    const el = ref.current
+    if (!el) return
+    const FADE = 24
+    const apply = () => {
+      const start = orientation === 'vertical' ? el.scrollTop > 1 : el.scrollLeft > 1
+      const end =
+        orientation === 'vertical'
+          ? el.scrollTop + el.clientHeight < el.scrollHeight - 1
+          : el.scrollLeft + el.clientWidth < el.scrollWidth - 1
+      const dir = orientation === 'vertical' ? 'to bottom' : 'to right'
+      const mask = `linear-gradient(${dir}, ${start ? 'transparent' : '#000'}, #000 ${FADE}px, #000 calc(100% - ${FADE}px), ${end ? 'transparent' : '#000'})`
+      el.style.setProperty('mask-image', mask)
+      el.style.setProperty('-webkit-mask-image', mask)
+    }
+    apply()
+    el.addEventListener('scroll', apply, { passive: true })
+    const ro = new ResizeObserver(apply)
+    ro.observe(el)
+    return () => {
+      el.removeEventListener('scroll', apply)
+      ro.disconnect()
+    }
+  }, [ref, orientation])
+}
+
 export function ProjectNav() {
   const [active, setActive] = useState<Panel>('list')
   const [selectedId, setSelectedId] = useState<string | null>(null)
@@ -242,8 +271,11 @@ function ListContent({
 }) {
   const viewportRef = useRef<HTMLDivElement>(null)
   const sentinelRef = useRef<HTMLDivElement>(null)
+  const tabsViewportRef = useRef<HTMLDivElement>(null)
   const [draft, setDraft] = useState(search)
   useEffect(() => setDraft(search), [search])
+  useScrollFade(viewportRef, 'vertical') // 列表上下阴影
+  useScrollFade(tabsViewportRef, 'horizontal') // 状态 tab 左右阴影
 
   useEffect(() => {
     const root = viewportRef.current
@@ -286,28 +318,33 @@ function ListContent({
             className="h-8 flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
           />
         </form>
-        <div className="flex gap-1 overflow-x-auto pb-1">
-          {STATUS_TABS.map((tab) => {
-            const count = tab.id ? (statusCounts[tab.id] ?? 0) : total
-            const isActive = status === tab.id
-            return (
-              <button
-                key={tab.id || 'all'}
-                type="button"
-                onClick={() => onStatusChange(tab.id)}
-                className={cn(
-                  'flex shrink-0 items-center gap-1 rounded-md px-2 py-1 text-xs whitespace-nowrap transition-colors',
-                  isActive
-                    ? 'bg-sidebar-accent text-sidebar-accent-foreground'
-                    : 'text-muted-foreground hover:bg-sidebar-accent/50',
-                )}
-              >
-                <span>{tab.label}</span>
-                <span className={cn('tabular-nums', isActive && 'font-semibold')}>{count}</span>
-              </button>
-            )
-          })}
-        </div>
+        <ScrollArea
+          viewportRef={tabsViewportRef}
+          className="w-full [&_[data-slot=scroll-area-scrollbar]]:hidden"
+        >
+          <div className="flex w-max gap-1">
+            {STATUS_TABS.map((tab) => {
+              const count = tab.id ? (statusCounts[tab.id] ?? 0) : total
+              const isActive = status === tab.id
+              return (
+                <button
+                  key={tab.id || 'all'}
+                  type="button"
+                  onClick={() => onStatusChange(tab.id)}
+                  className={cn(
+                    'flex shrink-0 items-center gap-1 rounded-md px-2 py-1 text-xs whitespace-nowrap transition-colors',
+                    isActive
+                      ? 'bg-sidebar-accent text-sidebar-accent-foreground'
+                      : 'text-muted-foreground hover:bg-sidebar-accent/50',
+                  )}
+                >
+                  <span>{tab.label}</span>
+                  <span className={cn('tabular-nums', isActive && 'font-semibold')}>{count}</span>
+                </button>
+              )
+            })}
+          </div>
+        </ScrollArea>
       </div>
 
       <div className="flex items-center justify-between px-3 py-2 text-xs text-muted-foreground">
