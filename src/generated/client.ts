@@ -3,8 +3,8 @@
 
 import type { ApiRequestOptions } from "@/lib/api-client";
 import { requestJson, requestVoid } from "@/lib/api-client";
-import type { BffLoginRequest, BffProject, BffProjectPage, BffProjectSaveRequest, BffProjectSaveResponse, BffProjectStats, BffSession, GetBffProjectPath, ListBffProjectsQuery, LogoutBffSessionResponse, SaveBffProjectPath } from "./api-types";
-import { listBffProjects as buildListBffProjectsPath, getBffProjectStats as buildGetBffProjectStatsPath, getBffProject as buildGetBffProjectPath, saveBffProject as buildSaveBffProjectPath, getBffSession as buildGetBffSessionPath, loginBffSession as buildLoginBffSessionPath, logoutBffSession as buildLogoutBffSessionPath } from "./api";
+import type { BffLoginRequest, BffProject, BffProjectPage, BffProjectSaveRequest, BffProjectSaveResponse, BffProjectStats, BffProjectStatusResponse, BffSession, BffStatusActionRequest, ChangeBffProjectStatusPath, GetBffProjectPath, ListBffProjectsQuery, LogoutBffSessionResponse, SaveBffProjectPath } from "./api-types";
+import { listBffProjects as buildListBffProjectsPath, getBffProjectStats as buildGetBffProjectStatsPath, getBffProject as buildGetBffProjectPath, saveBffProject as buildSaveBffProjectPath, changeBffProjectStatus as buildChangeBffProjectStatusPath, getBffSession as buildGetBffSessionPath, loginBffSession as buildLoginBffSessionPath, logoutBffSession as buildLogoutBffSessionPath } from "./api";
 type RuntimeRequestOptions = Omit<ApiRequestOptions, "json" | "method" | "searchParams" | "signal">;
 function buildSearchParams(query: Record<string, unknown> | undefined): URLSearchParams | undefined {
     if (query === undefined)
@@ -79,6 +79,20 @@ export function saveBffProject(options: SaveBffProjectOptions, requestOptions: R
     return requestJson<BffProjectSaveResponse>(buildSaveBffProjectPath(options.path), {
         ...requestOptions,
         method: "PUT",
+        json: options.body,
+        signal: options.signal
+    });
+}
+export interface ChangeBffProjectStatusOptions {
+    query?: never;
+    path: ChangeBffProjectStatusPath;
+    body: BffStatusActionRequest;
+    signal?: AbortSignal;
+}
+export function changeBffProjectStatus(options: ChangeBffProjectStatusOptions, requestOptions: RuntimeRequestOptions = {}): Promise<BffProjectStatusResponse> {
+    return requestJson<BffProjectStatusResponse>(buildChangeBffProjectStatusPath(options.path), {
+        ...requestOptions,
+        method: "POST",
         json: options.body,
         signal: options.signal
     });

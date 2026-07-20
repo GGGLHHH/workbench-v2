@@ -6,14 +6,70 @@ import {
   type UndoableState,
 } from '@gedatou/shared';
 import {
+  approveProject,
+  assignProjectToSelf,
   createProject,
+  failProject,
+  generateProject,
   getProject,
   getProjectStatistics,
   getProjectWorkbenchTimeline,
   listProjects,
+  prepareProject,
+  publishProject,
+  reassignProject,
+  rejectProject,
+  resubmitProject,
+  revertProject,
+  startProjectReview,
+  startProjectWork,
+  submitProjectReview,
   upsertProjectWorkbenchTimeline,
 } from './generated/client';
 import { forwardAuth } from './xchange-client';
+
+// FSM 状态动作 → xchangeai 端点。start_work 为复合:created/prepared 先认领(assign)
+// 再 startWork(xchangeai 只接受 assigned→in_progress);其余均为单次调用。
+async function performStatusAction(
+  id: string,
+  action: string,
+  auth: ReturnType<typeof forwardAuth>,
+): Promise<void> {
+  const p = { path: { id } };
+  switch (action) {
+    case 'prepare':
+      return prepareProject(p, auth);
+    case 'assign':
+      return assignProjectToSelf(p, auth);
+    case 'start_work': {
+      const proj = await getProject(p, auth);
+      if (proj.status === 'created' || proj.status === 'prepared') await assignProjectToSelf(p, auth);
+      return startProjectWork(p, auth);
+    }
+    case 'generate':
+      return generateProject(p, auth);
+    case 'fail':
+      return failProject(p, auth);
+    case 'submit_review':
+      return submitProjectReview(p, auth);
+    case 'start_review':
+      return startProjectReview(p, auth);
+    case 'approve':
+      return approveProject(p, auth);
+    case 'reject':
+      return rejectProject(p, auth);
+    case 'publish':
+      return publishProject(p, auth);
+    case 'revert':
+      return revertProject(p, auth);
+    case 'reassign':
+      return reassignProject(p, auth);
+    case 'resubmit':
+      return resubmitProject(p, auth);
+    default:
+      throw Object.assign(new Error(`unknown status action: ${action}`), { statusCode: 400 });
+  }
+}
 
 // 产品项目面:BFF 用 typed xchangeai client 调下游。
 // 权威时间轴模型 = UndoableState(编辑器原生);xchangeai 的 workbench-timeline 是
@@ -82,6 +138,12 @@ const isUndoable = (v: unknown): v is UndoableState =>
 const emptyState = (): UndoableState =>
   createEmptyState({ width: DEFAULT_COMPOSITION_WIDTH, height: DEFAULT_COMPOSITION_HEIGHT });
 
+// 前端 sort id → xchangeai sort_by/sort_at(仅时间字段服务端可排;name 由前端在已加载项上排)。
+const SORT_MAP: Record<string, [string, string]> = {
+  created_desc: ['created_at', 'desc'],
+  updated_desc: ['updated_at', 'desc'],
+}
+
 export const registerProjectRoutes = (app: FastifyInstance): void => {
   // state 作为不透明 object 过 spec(编辑器 state 太富,不逐字段建模);前端从
   // @gedatou/shared 拿 UndoableState 类型自行 cast。
@@ -148,11 +210,23 @@ export const registerProjectRoutes = (app: FastifyInstance): void => {
       offset: { type: 'integer' },
     },
   });
+  app.addSchema({
+    $id: 'BffStatusActionRequest',
+    type: 'object',
+    required: ['action'],
+    properties: { action: { type: 'string' } },
+  });
+  app.addSchema({
+    $id: 'BffProjectStatusResponse',
+    type: 'object',
+    required: ['id', 'status'],
+    properties: { id: { type: 'string' }, status: { type: 'string' } },
+  });
   const idParams = { type: 'object', required: ['id'], properties: { id: { type: 'string' } } };
 
   // 列表（分页 + 搜索 + 状态过滤,供前端下拉加载）：xchangeai 项目 → 富摘要。
   // dev:无过滤的首页全空时播一个,保证编辑器有目标可存取。
-  app.get<{ Querystring: { limit?: number; offset?: number; search?: string; status?: string } }>(
+  app.get<{ Querystring: { limit?: number; offset?: number; search?: string; status?: string; sort?: string } }>(
     '/bff/projects',
     {
       schema: {
@@ -165,6 +239,7 @@ export const registerProjectRoutes = (app: FastifyInstance): void => {
             offset: { type: 'integer', minimum: 0 },
             search: { type: 'string' },
             status: { type: 'string' },
+            sort: { type: 'string' },
           },
         },
         response: { 200: { $ref: 'BffProjectPage#' } },
@@ -174,8 +249,10 @@ export const registerProjectRoutes = (app: FastifyInstance): void => {
       const auth = forwardAuth(req);
       const limit = req.query.limit ?? 20;
       const offset = req.query.offset ?? 0;
+      // 默认按创建时间倒序
+      const [sortBy, sortAt] = SORT_MAP[req.query.sort ?? 'created_desc'] ?? SORT_MAP.created_desc;
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const query: any = { limit, offset };
+      const query: any = { limit, offset, sort_by: sortBy, sort_at: sortAt };
       if (req.query.search) query.search = req.query.search;
       if (req.query.status) query.status = [req.query.status]; // xchangeai status 是数组
       let page = await listProjects({ query }, auth);
@@ -194,6 +271,27 @@ export const registerProjectRoutes = (app: FastifyInstance): void => {
     async (req) => {
       const stats = await getProjectStatistics({}, forwardAuth(req));
       return { total: stats.total ?? 0, statusCounts: stats.status_counts ?? {} };
+    },
+  );
+
+  // 状态转换(FSM):action → xchangeai 端点,返回更新后的状态
+  app.post<{ Params: { id: string }; Body: { action: string } }>(
+    '/bff/projects/:id/status',
+    {
+      schema: {
+        operationId: 'changeBffProjectStatus',
+        tags: ['bff'],
+        params: idParams,
+        body: { $ref: 'BffStatusActionRequest#' },
+        response: { 200: { $ref: 'BffProjectStatusResponse#' } },
+      },
+    },
+    async (req) => {
+      const { id } = req.params;
+      const auth = forwardAuth(req);
+      await performStatusAction(id, req.body.action, auth);
+      const proj = await getProject({ path: { id } }, auth);
+      return { id, status: proj.status };
     },
   );
 

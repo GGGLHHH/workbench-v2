@@ -50,6 +50,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/bff/projects/{id}/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["changeBffProjectStatus"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/bff/projects/{id}": {
         parameters: {
             query?: never;
@@ -130,6 +146,13 @@ export interface components {
             limit: number;
             offset: number;
         };
+        BffStatusActionRequest: {
+            action: string;
+        };
+        BffProjectStatusResponse: {
+            id: string;
+            status: string;
+        };
     };
     responses: never;
     parameters: never;
@@ -145,6 +168,8 @@ export type BffProject = components['schemas']['BffProject'];
 export type BffProjectSaveRequest = components['schemas']['BffProjectSaveRequest'];
 export type BffProjectSaveResponse = components['schemas']['BffProjectSaveResponse'];
 export type BffProjectPage = components['schemas']['BffProjectPage'];
+export type BffStatusActionRequest = components['schemas']['BffStatusActionRequest'];
+export type BffProjectStatusResponse = components['schemas']['BffProjectStatusResponse'];
 export type $defs = Record<string, never>;
 export interface operations {
     getBffSession: {
@@ -220,6 +245,7 @@ export interface operations {
                 offset?: number;
                 search?: string;
                 status?: string;
+                sort?: string;
             };
             header?: never;
             path?: never;
@@ -254,6 +280,32 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["BffProjectStats"];
+                };
+            };
+        };
+    };
+    changeBffProjectStatus: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BffStatusActionRequest"];
+            };
+        };
+        responses: {
+            /** @description Default Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BffProjectStatusResponse"];
                 };
             };
         };
@@ -307,6 +359,7 @@ export interface operations {
         };
     };
 }
+export type ChangeBffProjectStatusPath = operations['changeBffProjectStatus']['parameters']['path'];
 export type GetBffProjectPath = operations['getBffProject']['parameters']['path'];
 export type ListBffProjectsQuery = operations['listBffProjects']['parameters']['query'];
 export type LogoutBffSessionResponse = operations['logoutBffSession']['responses'][200]['content']['application/json'];
