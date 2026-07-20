@@ -1,6 +1,5 @@
 import { useRef } from 'react'
-import { useInfiniteQuery, useMutation, useQuery } from '@tanstack/react-query'
-import type { InfiniteData } from '@tanstack/react-query'
+import { keepPreviousData, useMutation, useQueries, useQuery } from '@tanstack/react-query'
 import { toast } from 'sonner'
 
 import type {
@@ -24,42 +23,65 @@ import { queryKeys, type ProjectListParams } from '@/lib/query-keys'
 
 export const PROJECTS_PAGE_SIZE = 20
 
-type InfiniteProjects = InfiniteData<BffProjectPage, number>
-
 const isAbort = (error: unknown) => error instanceof ApiError && error.kind === 'abort'
 
-// BFF 的 limit 上限。刷新还原时首页一次拿回原来翻了几页的量,超过这个数只能还原到 100 条附近。
-const PROJECTS_MAX_LIMIT = 100
+const pageQuery = (params: ProjectListParams, index: number) => ({
+  queryKey: queryKeys.projects.page(params, index),
+  queryFn: () =>
+    listBffProjects({
+      query: {
+        limit: PROJECTS_PAGE_SIZE,
+        offset: index * PROJECTS_PAGE_SIZE,
+        search: params.search || undefined,
+        status: params.status || undefined,
+        sort: params.sort,
+      },
+    }),
+  // 翻回看过的一段时别闪 loading —— 这些页多半还在缓存里
+  placeholderData: keepPreviousData,
+})
 
-// 无限列表:offset 分页,getNextPageParam 累加已加载数直到 total。sort 只认服务端字段
-// (created/updated);name 排序由调用方在已加载项上做(xchangeai 只支持时间字段服务端排序)。
-//
-// restoreCount:刷新前已加载的条数。首页请求直接按这个量取,一次补齐 —— 否则从 20 条重来,
-// 还原的 scrollTop 超出内容高度会被夹到底,再触发 IO 连锁补页,看着会抽。
-// 用 ref 固化在挂载那一刻:它不进 queryKey(进了每次翻页都会换键重拉),
-// 只影响第一次请求;后续 pageParam>0 一律回到常规页大小。
-export function useInfiniteProjects(params: ProjectListParams, restoreCount = 0) {
-  const firstLimit = useRef(
-    Math.min(Math.max(restoreCount, PROJECTS_PAGE_SIZE), PROJECTS_MAX_LIMIT),
-  )
-  return useInfiniteQuery({
-    queryKey: queryKeys.projects.list(params),
-    queryFn: ({ pageParam }) =>
-      listBffProjects({
-        query: {
-          limit: pageParam === 0 ? firstLimit.current : PROJECTS_PAGE_SIZE,
-          offset: pageParam,
-          search: params.search || undefined,
-          status: params.status || undefined,
-          sort: params.sort,
-        },
-      }),
-    initialPageParam: 0,
-    getNextPageParam: (last) => {
-      const loaded = last.offset + last.items.length
-      return loaded < last.total ? loaded : undefined
-    },
-  })
+/**
+ * 「按页随机访问」而不是无限滚动 —— 这是深度还原能做到 O(1) 的前提。
+ *
+ * 无限滚动的模型里,第 3840 条只能靠「从头翻 192 页」抵达;而 offset 分页天生支持
+ * 直接跳到第 192 页(Discord 为了这个能力专门建了时间分桶存储层,我们白捡)。
+ * 所以这里不再累积 pages,而是由虚拟化器报告可见区间 → 只取覆盖该区间的那几页。
+ *
+ * boot 页额外的作用是拿 total:虚拟化器要先知道总高度才能定位,而 BFF 每页都返 total。
+ * 还原时 boot 直接取锚点所在页,于是「刷新 → 落回原位」始终是一个请求。
+ */
+export function useProjectPages(params: ProjectListParams, range: { start: number; end: number }) {
+  const bootIndex = Math.floor(Math.max(range.start, 0) / PROJECTS_PAGE_SIZE)
+  const boot = useQuery(pageQuery(params, bootIndex))
+  const total = boot.data?.total ?? 0
+
+  // 可见区间覆盖的页号。total 未知时只取 boot 页(此时列表还没高度,虚拟化器也报不出区间)。
+  const firstPage = bootIndex
+  const lastPage = total
+    ? Math.min(Math.floor(range.end / PROJECTS_PAGE_SIZE), Math.floor((total - 1) / PROJECTS_PAGE_SIZE))
+    : bootIndex
+  const indexes: number[] = []
+  for (let i = Math.min(firstPage, lastPage); i <= Math.max(firstPage, lastPage); i++) indexes.push(i)
+
+  const results = useQueries({ queries: indexes.map((i) => pageQuery(params, i)) })
+
+  // 页号 → 该页数据。虚拟行按绝对下标取:itemAt(3847) → 第 192 页的第 7 条。
+  const pages = new Map<number, BffProjectPage>()
+  for (const [i, r] of results.entries()) {
+    const index = indexes[i]
+    if (r.data && index !== undefined) pages.set(index, r.data)
+  }
+
+  return {
+    total,
+    itemAt: (index: number) =>
+      pages.get(Math.floor(index / PROJECTS_PAGE_SIZE))?.items[index % PROJECTS_PAGE_SIZE],
+    isPending: boot.isPending,
+    isError: boot.isError,
+    isFetching: boot.isFetching || results.some((r) => r.isFetching),
+    refetch: () => void queryClient.invalidateQueries({ queryKey: queryKeys.projects.lists() }),
+  }
 }
 
 export function useProjectStats() {
@@ -133,14 +155,13 @@ const NEXT_STATUS: Record<string, string> = {
   reassign: 'created',
 }
 
-// 把某个项目在所有列表分片(不同 search/status/sort 各一份缓存)里的 status 就地改写。
-function withStatus(data: InfiniteProjects, id: string, status: string): InfiniteProjects {
+// 把某个项目在所有列表分片(不同 search/status/sort × 不同页号各一份缓存)里的 status 就地改写。
+// 现在每页是独立缓存条目,lists() 前缀能一把捞全 —— 比原先改 InfiniteData 的 pages 数组还简单。
+function withStatus(page: BffProjectPage, id: string, status: string): BffProjectPage {
+  if (!page.items.some((item) => item.id === id)) return page
   return {
-    ...data,
-    pages: data.pages.map((page) => ({
-      ...page,
-      items: page.items.map((item) => (item.id === id ? { ...item, status } : item)),
-    })),
+    ...page,
+    items: page.items.map((item) => (item.id === id ? { ...item, status } : item)),
   }
 }
 
@@ -166,11 +187,11 @@ export function useChangeProjectStatus() {
       const listsKey = queryKeys.projects.lists()
       const detailKey = queryKeys.projects.detail(id)
       await queryClient.cancelQueries({ queryKey: listsKey })
-      const previousLists = queryClient.getQueriesData<InfiniteProjects>({ queryKey: listsKey })
+      const previousLists = queryClient.getQueriesData<BffProjectPage>({ queryKey: listsKey })
       const previousDetail = queryClient.getQueryData<BffProject>(detailKey)
       const next = NEXT_STATUS[action]
       if (next) {
-        queryClient.setQueriesData<InfiniteProjects>({ queryKey: listsKey }, (old) =>
+        queryClient.setQueriesData<BffProjectPage>({ queryKey: listsKey }, (old) =>
           old ? withStatus(old, id, next) : old,
         )
         queryClient.setQueryData<BffProject>(detailKey, (old) =>
@@ -180,7 +201,7 @@ export function useChangeProjectStatus() {
       return { previousLists, previousDetail, detailKey }
     },
     onSuccess: (data) => {
-      queryClient.setQueriesData<InfiniteProjects>({ queryKey: queryKeys.projects.lists() }, (old) =>
+      queryClient.setQueriesData<BffProjectPage>({ queryKey: queryKeys.projects.lists() }, (old) =>
         old ? withStatus(old, data.id, data.status) : old,
       )
       // 详情面板的状态徽章走 detail 缓存,不在 list 分片里 —— 同样就地校正,否则从详情改完不动

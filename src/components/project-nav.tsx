@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { useElementScrollRestoration, useNavigate, useSearch } from '@tanstack/react-router'
+import { useNavigate, useSearch } from '@tanstack/react-router'
+import { useVirtualizer } from '@tanstack/react-virtual'
 import { useLocalStorageState } from 'ahooks'
 import { format, formatDistanceToNow } from 'date-fns'
 import {
@@ -28,14 +29,15 @@ import type { BffProject, BffProjectDetail, BffProjectMetaRequest, BffProjectOpt
 import type { ProjectSearch } from '@/routes/index'
 
 import {
+  PROJECTS_PAGE_SIZE,
   useChangeProjectStatus,
-  useInfiniteProjects,
   useProject,
   useProjectOptions,
+  useProjectPages,
   useProjectStats,
   useSaveProjectMeta,
 } from '@/api/projects/projects'
-import { listScrollKey } from '@/lib/scroll-key'
+import type { ProjectListParams } from '@/lib/query-keys'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
@@ -47,7 +49,6 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
-import { AnimatedItem } from '@/components/AnimatedList'
 import { SearchInput } from '@/components/form/search-input'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -172,20 +173,35 @@ const usd = (n: number | null | undefined) =>
     ? new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(n)
     : null
 
-// 排序选项:created/updated 走服务端;name(A–Z/Z–A)由前端在已加载项上排
-// (xchangeai 只支持时间字段服务端排序)。默认按创建时间倒序。
+// 排序选项。只留服务端支持的两个时间字段(xchangeai 的 SortBy 枚举就只有 created_at /
+// updated_at)。按名字排已移除:它原先是在"已加载的那部分"上排,滚出去的部分不参与,
+// 本就半残;改成按页随机访问后更没有意义 —— 排序必须整份数据在服务端做。
 const SORT_OPTIONS = [
   { value: 'created_desc', label: 'Recently created' },
   { value: 'updated_desc', label: 'Recently updated' },
-  { value: 'name_asc', label: 'Name (A–Z)' },
-  { value: 'name_desc', label: 'Name (Z–A)' },
 ]
 
 /** 供路由 validateSearch 校验 URL 上的 sort —— 脏值会让 Select 显示空白 */
 export const SORT_VALUES = SORT_OPTIONS.map((o) => o.value)
 
-// 滚动容器的还原 id。挂在 viewport 上,router 据此按选择器存取位置。
-const SCROLL_ID = 'project-list'
+// 行高估算 = 实测的卡片高度(缩略图 56 + 两行元信息 + 底栏 = 115,间距 8)。
+// 标题偶尔折两行,故仍挂 measureElement 修正;但 estimate 必须贴近真值 ——
+// 还原时锚点上方那些行从没渲染过、只有估算高度,估偏多少就漂多少
+// (估 156 时 53 行漂了 533px)。
+const ROW_ESTIMATE = 115
+const ROW_GAP = 8
+
+// 视口顶部那一条 + 视口切在它内部的像素偏移。存这个而不是 scrollTop:
+// scrollTop 依赖"上方所有行的真实高度",行高一被实测修正它就失真。
+type Anchor = { index: number; offsetInItem: number }
+
+const readAnchor = (key: string): Anchor | null => {
+  try {
+    return JSON.parse(sessionStorage.getItem(key) ?? 'null') as Anchor | null
+  } catch {
+    return null
+  }
+}
 
 // scroll-fade:按滚动位置给视口加边缘渐隐 mask —— 只有该方向还有更多内容时才隐,
 // 到边则不隐(纵向=上下,横向=左右)。用于列表上下阴影 + 状态 tab 左右阴影。
@@ -244,31 +260,10 @@ export function ProjectNav() {
     defaultValue: false,
   })
 
-  // name 排序前端做,服务端固定用时间序拉取(created/updated 二选一)
-  const serverSort = sort.startsWith('name') ? 'created_desc' : sort
-
-  // 刷新前加载到第几条:按筛选分桶存 sessionStorage(换了筛选就是另一批数据)。
-  // 只在挂载时读一次喂给首页请求,之后由下面的 effect 持续写回。
-  const scrollKey = `${search}|${status}|${sort}`
-  const loadedKey = `nav.loaded:${scrollKey}`
-  const [restoreCount] = useState(() => Number(sessionStorage.getItem(loadedKey)) || 0)
-
-  const projects = useInfiniteProjects({ search, status, sort: serverSort }, restoreCount)
+  // 列表数据由 ListContent 自己按可见区间取(虚拟化 → 随机访问),这里只留 stats 供 tab 计数。
+  const params2 = useMemo(() => ({ search, status, sort }), [search, status, sort])
   const stats = useProjectStats()
-  const rawItems = (projects.data?.pages.flatMap((p) => p.items) ?? []) as ProjectSummary[]
-  const items = useMemo(() => {
-    if (sort === 'name_asc') return [...rawItems].sort((a, b) => a.title.localeCompare(b.title))
-    if (sort === 'name_desc') return [...rawItems].sort((a, b) => b.title.localeCompare(a.title))
-    return rawItems
-  }, [rawItems, sort])
-
   const detail = useProject(selectedId)
-
-  // 已加载条数写回:供下次刷新一次补齐(见 useInfiniteProjects 的 restoreCount)
-  const loadedCount = projects.data?.pages.reduce((n, p) => n + p.items.length, 0) ?? 0
-  useEffect(() => {
-    if (loadedCount > 0) sessionStorage.setItem(loadedKey, String(loadedCount))
-  }, [loadedKey, loadedCount])
 
   // 点 rail / 选项目 → 展开该栏(顺带解除整体收起)
   const openPanel = (panel: Panel) => {
@@ -283,11 +278,6 @@ export function ProjectNav() {
 
   const listExpanded = !collapsed && active === 'list'
   const detailExpanded = !collapsed && active === 'detail'
-
-  const refresh = () => {
-    void projects.refetch()
-    void stats.refetch()
-  }
 
   const changeStatus = useChangeProjectStatus()
 
@@ -314,22 +304,16 @@ export function ProjectNav() {
           <ListContent
             visible={listExpanded}
             onToggleCollapse={() => setCollapsed(true)}
-            items={items}
-            total={stats.data?.total ?? projects.data?.pages[0]?.total ?? items.length}
+            params={params2}
+            statsTotal={stats.data?.total}
             statusCounts={stats.data?.statusCounts ?? {}}
-            loading={projects.isPending}
-            error={projects.isError}
-            hasNextPage={projects.hasNextPage}
-            isFetchingNextPage={projects.isFetchingNextPage}
-            fetchNextPage={() => void projects.fetchNextPage()}
-            refreshing={projects.isRefetching}
             search={search}
             onSearch={(value) => setFilter({ search: value || undefined })}
             status={status}
             onStatusChange={(value) => setFilter({ status: value || undefined })}
             sort={sort}
             onSortChange={(value) => setFilter({ sort: value })}
-            onRefresh={refresh}
+            onRefreshStats={() => void stats.refetch()}
             onChangeStatus={(id, action) => changeStatus.mutate({ id, action })}
             statusChangingId={changeStatus.isPending ? (changeStatus.variables?.id ?? null) : null}
             selectedId={selectedId}
@@ -482,22 +466,16 @@ function PanelBody({ children }: { children: React.ReactNode }) {
 }
 
 function ListContent({
-  items,
-  total,
+  params,
+  statsTotal,
   statusCounts,
-  loading,
-  error,
-  hasNextPage,
-  isFetchingNextPage,
-  fetchNextPage,
-  refreshing,
   search,
   onSearch,
   status,
   onStatusChange,
   sort,
   onSortChange,
-  onRefresh,
+  onRefreshStats,
   onChangeStatus,
   statusChangingId,
   selectedId,
@@ -505,22 +483,16 @@ function ListContent({
   onToggleCollapse,
   visible,
 }: {
-  items: ProjectSummary[]
-  total: number
+  params: ProjectListParams
+  statsTotal?: number
   statusCounts: Record<string, number>
-  loading: boolean
-  error: boolean
-  hasNextPage: boolean
-  isFetchingNextPage: boolean
-  fetchNextPage: () => void
-  refreshing: boolean
   search: string
   onSearch: (value: string) => void
   status: string
   onStatusChange: (value: string) => void
   sort: string
   onSortChange: (value: string) => void
-  onRefresh: () => void
+  onRefreshStats: () => void
   onChangeStatus: (id: string, action: string) => void
   statusChangingId: string | null
   selectedId: string | null
@@ -529,44 +501,104 @@ function ListContent({
   visible: boolean
 }) {
   const viewportRef = useRef<HTMLDivElement>(null)
-  const sentinelRef = useRef<HTMLDivElement>(null)
   const tabsViewportRef = useRef<HTMLDivElement>(null)
   useScrollFade(viewportRef, 'vertical') // 列表上下阴影
   useScrollFade(tabsViewportRef, 'horizontal') // 状态 tab 左右阴影
 
-  // 滚动位置还原。router 内置的自动还原在 onRendered 同步执行,那会儿列表数据还没回来、
-  // 容器高度为 0,scrollTop 写下去会被夹成 0 —— 所以这里只借它的缓存(读 entry),
-  // 等内容真的够高了自己应用一次。restoredRef 保证只做一次,不然用户往回滚会被拽回去。
-  const scrollEntry = useElementScrollRestoration({
-    id: SCROLL_ID,
-    getElement: () => viewportRef.current,
-    getKey: listScrollKey, // 必须与 router 的 getScrollRestorationKey 同一个函数
+  // 锚点按筛选分桶:换了筛选就是另一批数据,位置不该串。
+  const anchorKey = `nav.anchor:${params.search}|${params.status}|${params.sort}`
+  const [anchor, setAnchor] = useState<Anchor | null>(() => readAnchor(anchorKey))
+
+  // 可见区间 → 该取哪几页。初值直接落在锚点所在页,于是「刷新 → 回到原位」只有一个请求,
+  // 与滚动深度无关(第 20 条和第 3847 条一样快)。
+  const [range, setRange] = useState(() => ({
+    start: anchor?.index ?? 0,
+    end: (anchor?.index ?? 0) + PROJECTS_PAGE_SIZE,
+  }))
+  const { total, itemAt, isPending, isError, isFetching, refetch } = useProjectPages(params, range)
+
+  const virtualizer = useVirtualizer({
+    count: total,
+    getScrollElement: () => viewportRef.current,
+    estimateSize: () => ROW_ESTIMATE,
+    overscan: 6,
+    gap: ROW_GAP,
   })
+  const virtualItems = virtualizer.getVirtualItems()
+
+  // 虚拟化器报告可见区间 → 驱动取页。相等时不 setState,否则每帧一次渲染循环。
+  // 有锚点但还没落位时先按兵不动:此刻 scrollTop 还是 0,区间是 [0,13],
+  // 照着它取页会白拉一次第 0 页(还原完立刻就作废)。
+  useEffect(() => {
+    if (anchor && !restoredRef.current) return
+    const first = virtualItems[0]?.index
+    const last = virtualItems[virtualItems.length - 1]?.index
+    if (first === undefined || last === undefined) return
+    setRange((r) => (r.start === first && r.end === last ? r : { start: first, end: last }))
+  }, [virtualItems, anchor])
+
+  // 切筛选 = 换了一批数据:重读该桶的锚点、解封还原标记(否则回到原筛选也不还原了)、
+  // 该桶没存过就回顶(视口不会自己归零,会停在上一份数据的位置上)。
   const restoredRef = useRef(false)
   useEffect(() => {
-    const el = viewportRef.current
-    const top = scrollEntry?.scrollY
-    if (restoredRef.current || !el || !top || !visible) return
-    if (el.scrollHeight < top + el.clientHeight) return // 内容还不够高,等下一批
-    el.scrollTop = top
-    restoredRef.current = true
-  }, [scrollEntry, visible, items.length])
+    const next = readAnchor(anchorKey)
+    restoredRef.current = false
+    setAnchor(next)
+    setRange({ start: next?.index ?? 0, end: (next?.index ?? 0) + PROJECTS_PAGE_SIZE })
+    if (!next) viewportRef.current?.scrollTo({ top: 0 })
+  }, [anchorKey])
 
-  // 列表现在始终挂载(收起时只是 opacity-0),但 opacity-0 元素照样有布局、照样会命中
-  // IntersectionObserver —— 不 gate 住就会在看不见的时候继续拉分页。
+  // 还原。目标像素 = 该行的起始偏移 + 当时视口切在这行的第几像素;
+  // 少了后半截只能落到「对的那一行」,落不回「一模一样的画面」。
+  //
+  // 不能一上来就把 restoredRef 封上:此刻容器可能还没高度、锚点那页可能还在路上,
+  // 定位就是空操作。所以每次测量更新都重试,直到 scrollTop 真的落到位才封 ——
+  // 封早了会停在顶部,封晚了(不封)用户往回滚会被反复拽回去。
   useEffect(() => {
-    const root = viewportRef.current
-    const sentinel = sentinelRef.current
-    if (!root || !sentinel || !hasNextPage || !visible) return
-    const io = new IntersectionObserver(
-      (entries) => {
-        if (entries[0]?.isIntersecting && !isFetchingNextPage) fetchNextPage()
-      },
-      { root, rootMargin: '160px' },
-    )
-    io.observe(sentinel)
-    return () => io.disconnect()
-  }, [hasNextPage, isFetchingNextPage, fetchNextPage, visible])
+    const el = viewportRef.current
+    if (restoredRef.current || !anchor || !total || !visible || !el?.clientHeight) return
+    const target = virtualizer.getOffsetForIndex(anchor.index, 'start')?.[0]
+    if (target === undefined) return
+    const want = target + anchor.offsetInItem
+    virtualizer.scrollToOffset(want)
+    if (Math.abs(el.scrollTop - want) <= 1) restoredRef.current = true
+  }, [anchor, total, visible, virtualizer, virtualItems])
+
+  // 记锚点:顶部第一条的下标 + 视口切在它内部的偏移(Chrome «Complexities of an
+  // infinite scroller» 的做法)。存下标而不是 scrollTop —— 后者在行高被测量修正后就失真了。
+  useEffect(() => {
+    const el = viewportRef.current
+    if (!el || !visible) return
+    let raf = 0
+    const save = () => {
+      raf = 0
+      // 还没落位就别存 —— 会把"未还原的位置"覆盖掉真正的锚点
+      if (anchor && !restoredRef.current) return
+      // 取「视口里真正切到的那一条」,不是 getVirtualItems()[0](后者是 overscan 的头一条,
+      // 在视口上方,算出的 offsetInItem 会跨好几行)。
+      // 找不到就直接放弃,不兜底 —— 切筛选的瞬间虚拟化器已重置到 index 0 而 scrollTop 还停在
+      // 旧位置,这时硬凑会存出 {index:0, offsetInItem:5000} 这种跨桶污染的垃圾。
+      const rows = virtualizer.getVirtualItems()
+      const first = rows.find((v) => v.start <= el.scrollTop && v.end > el.scrollTop)
+      if (!first) return
+      sessionStorage.setItem(
+        anchorKey,
+        JSON.stringify({ index: first.index, offsetInItem: Math.round(el.scrollTop - first.start) }),
+      )
+    }
+    const onScroll = () => {
+      if (!raf) raf = requestAnimationFrame(save)
+    }
+    el.addEventListener('scroll', onScroll, { passive: true })
+    window.addEventListener('pagehide', save)
+    return () => {
+      if (raf) cancelAnimationFrame(raf)
+      el.removeEventListener('scroll', onScroll)
+      window.removeEventListener('pagehide', save)
+      // 不在 cleanup 里补存:切桶/卸载那一刻虚拟化器已重置而 scrollTop 未变,
+      // 此时的几何是不可信的。滚动时的 rAF + pagehide 已经覆盖了真实场景。
+    }
+  }, [anchorKey, visible, virtualizer, anchor])
 
   return (
     <PanelBody>
@@ -576,8 +608,17 @@ function ListContent({
           {/* 与收起态 rail 顶部的 toggle 同一位置(最左),避免来回切时按钮跳位 */}
           <CollapseToggle collapsed={false} onToggle={onToggleCollapse} />
           <span className="flex-1 text-sm font-semibold">项目</span>
-          <Button variant="ghost" size="sm" className="h-7 gap-1 px-2 text-xs" disabled={refreshing} onClick={onRefresh}>
-            {refreshing ? <Loader2 className="size-3.5 animate-spin" /> : <CloudDownload className="size-3.5" />} 同步
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-7 gap-1 px-2 text-xs"
+            disabled={isFetching}
+            onClick={() => {
+              refetch()
+              onRefreshStats()
+            }}
+          >
+            {isFetching ? <Loader2 className="size-3.5 animate-spin" /> : <CloudDownload className="size-3.5" />} 同步
           </Button>
         </div>
         <SearchInput
@@ -591,7 +632,7 @@ function ListContent({
         <ScrollArea viewportRef={tabsViewportRef} scrollbar="none" className="w-full">
           <div className="flex w-max gap-1">
             {STATUS_TABS.map((tab) => {
-              const count = tab.id ? (statusCounts[tab.id] ?? 0) : total
+              const count = tab.id ? (statusCounts[tab.id] ?? 0) : (statsTotal ?? total)
               const isActive = status === tab.id
               return (
                 <button
@@ -633,45 +674,49 @@ function ListContent({
         </Select>
       </div>
 
-      <ScrollArea
-        viewportRef={viewportRef}
-        viewportProps={{ 'data-scroll-restoration-id': SCROLL_ID }}
-        className="min-h-0 flex-1"
-      >
-        <div className="flex flex-col gap-2 p-2">
-          {loading ? (
-            <div className="flex items-center gap-2 p-3 text-sm text-muted-foreground">
-              <Loader2 className="size-4 animate-spin" /> 加载中…
-            </div>
-          ) : error ? (
-            <div className="p-3 text-sm text-destructive">加载失败</div>
-          ) : items.length === 0 ? (
-            <div className="p-3 text-sm text-muted-foreground">没有匹配的项目</div>
-          ) : (
-            <>
-              {/* React Bits AnimatedItem:滚入视野时 scale/opacity 入场。
-                  只取它的 item 层 —— 外层滚动容器与渐变由 ScrollArea + useScrollFade 负责,
-                  排版交给父级 gap-2,所以 className 置空去掉它默认的 mb-4。 */}
-              {items.map((p, i) => (
-                <AnimatedItem key={p.id} index={i} delay={0.1} className="">
-                  <ProjectCard
-                    project={p}
-                    active={selectedId === p.id}
-                    busy={statusChangingId === p.id}
-                    onOpen={() => onSelect(p.id)}
-                    onChangeStatus={onChangeStatus}
-                  />
-                </AnimatedItem>
-              ))}
-              <div ref={sentinelRef} aria-hidden className="h-px" />
-              {isFetchingNextPage ? (
-                <div className="flex items-center justify-center gap-2 py-2 text-xs text-muted-foreground">
-                  <Loader2 className="size-3.5 animate-spin" /> 加载更多…
+      <ScrollArea viewportRef={viewportRef} className="min-h-0 flex-1">
+        {isPending ? (
+          <div className="flex items-center gap-2 p-3 text-sm text-muted-foreground">
+            <Loader2 className="size-4 animate-spin" /> 加载中…
+          </div>
+        ) : isError ? (
+          <div className="p-3 text-sm text-destructive">加载失败</div>
+        ) : total === 0 ? (
+          <div className="p-3 text-sm text-muted-foreground">没有匹配的项目</div>
+        ) : (
+          // 撑满整份 total 的高度 —— 滚动条据此忠实反映"在 N 条里的第几条",
+          // 而不是"在已加载的那几条里的第几条"。行绝对定位到各自的 start。
+          <div className="relative p-2" style={{ height: virtualizer.getTotalSize() }}>
+            {virtualItems.map((row) => {
+              const project = itemAt(row.index)
+              return (
+                <div
+                  key={row.key}
+                  data-index={row.index}
+                  ref={virtualizer.measureElement}
+                  className="absolute inset-x-2 top-0"
+                  style={{ transform: `translateY(${row.start}px)` }}
+                >
+                  {project ? (
+                    <ProjectCard
+                      project={project as ProjectSummary}
+                      active={selectedId === project.id}
+                      busy={statusChangingId === project.id}
+                      onOpen={() => onSelect(project.id)}
+                      onChangeStatus={onChangeStatus}
+                    />
+                  ) : (
+                    // tombstone:该行所在页还在路上。占住估算高度,避免滚动条抽搐
+                    <div
+                      className="animate-pulse rounded-lg border bg-card/40"
+                      style={{ height: ROW_ESTIMATE }}
+                    />
+                  )}
                 </div>
-              ) : null}
-            </>
-          )}
-        </div>
+              )
+            })}
+          </div>
+        )}
       </ScrollArea>
     </PanelBody>
   )
