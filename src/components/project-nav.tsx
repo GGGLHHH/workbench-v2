@@ -13,7 +13,6 @@ import {
   Image as ImageIcon,
   Info,
   Loader2,
-  Search,
   User,
 } from 'lucide-react'
 
@@ -29,6 +28,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
+import { SearchInput } from '@/components/form/search-input'
 
 // 手写双层侧边栏(互斥展开):第一层=项目列表(对齐 xchangeai-workbench 卡片:缩略图 +
 // 负责人/机构 + resources/clips/时长 + 状态徽章 + 更新时间;搜索 + 状态筛选 tab + 计数 +
@@ -367,8 +367,6 @@ function ListContent({
   const viewportRef = useRef<HTMLDivElement>(null)
   const sentinelRef = useRef<HTMLDivElement>(null)
   const tabsViewportRef = useRef<HTMLDivElement>(null)
-  const [draft, setDraft] = useState(search)
-  useEffect(() => setDraft(search), [search])
   useScrollFade(viewportRef, 'vertical') // 列表上下阴影
   useScrollFade(tabsViewportRef, 'horizontal') // 状态 tab 左右阴影
 
@@ -397,22 +395,13 @@ function ListContent({
             {refreshing ? <Loader2 className="size-3.5 animate-spin" /> : <CloudDownload className="size-3.5" />} 同步
           </Button>
         </div>
-        <form
-          className="flex items-center gap-2 rounded-md border bg-background px-2"
-          onSubmit={(event) => {
-            event.preventDefault()
-            onSearch(draft.trim())
-          }}
-        >
-          <Search className="size-3.5 text-muted-foreground" />
-          <input
-            value={draft}
-            onChange={(event) => setDraft(event.target.value)}
-            placeholder="搜索项目…"
-            aria-label="搜索项目"
-            className="h-8 flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
-          />
-        </form>
+        <SearchInput
+          value={search}
+          onValueChange={onSearch}
+          placeholder="搜索项目…"
+          aria-label="搜索项目"
+          inputClassName="h-8 text-sm"
+        />
         <ScrollArea
           viewportRef={tabsViewportRef}
           className="w-full [&_[data-slot=scroll-area-scrollbar]]:hidden"
