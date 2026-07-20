@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { useElementScrollRestoration, useNavigate, useSearch } from '@tanstack/react-router'
+import { useLocalStorageState } from 'ahooks'
 import { format, formatDistanceToNow } from 'date-fns'
 import {
   Building2,
@@ -22,6 +24,8 @@ import {
 } from 'lucide-react'
 
 import type { BffProject, BffProjectDetail, BffProjectMetaRequest, BffProjectOptions } from '@/generated/api-types'
+// 类型引用,verbatimModuleSyntax 下会被完全擦除 → 与路由不构成运行时循环依赖
+import type { ProjectSearch } from '@/routes/index'
 
 import {
   useChangeProjectStatus,
@@ -31,6 +35,7 @@ import {
   useProjectStats,
   useSaveProjectMeta,
 } from '@/api/projects/projects'
+import { listScrollKey } from '@/lib/scroll-key'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
@@ -176,6 +181,12 @@ const SORT_OPTIONS = [
   { value: 'name_desc', label: 'Name (Z–A)' },
 ]
 
+/** 供路由 validateSearch 校验 URL 上的 sort —— 脏值会让 Select 显示空白 */
+export const SORT_VALUES = SORT_OPTIONS.map((o) => o.value)
+
+// 滚动容器的还原 id。挂在 viewport 上,router 据此按选择器存取位置。
+const SCROLL_ID = 'project-list'
+
 // scroll-fade:按滚动位置给视口加边缘渐隐 mask —— 只有该方向还有更多内容时才隐,
 // 到边则不隐(纵向=上下,横向=左右)。用于列表上下阴影 + 状态 tab 左右阴影。
 function useScrollFade(ref: React.RefObject<HTMLDivElement | null>, orientation: 'vertical' | 'horizontal') {
@@ -209,19 +220,40 @@ function useScrollFade(ref: React.RefObject<HTMLDivElement | null>, orientation:
 }
 
 export function ProjectNav() {
+  // 「看的是哪个项目 + 哪份筛选」进 URL(见 routes/index.tsx),刷新/后退天然还原。
+  const params = useSearch({ from: '/' })
+  const navigate = useNavigate({ from: '/' })
+  const selectedId = params.project ?? null
+  const search = params.search ?? ''
+  const status = params.status ?? ''
+  const sort = params.sort ?? 'created_desc'
+
+  // 改筛选用 replace:搜索框每 300ms 防抖发一次,push 会把历史记录塞满。
+  // 选项目用 push:后退键回到上一个看的项目(见 AskUserQuestion 里选的那条)。
+  const setFilter = (patch: ProjectSearch) =>
+    void navigate({ search: (prev) => ({ ...prev, ...patch }), replace: true })
+
   // active = 哪一栏(该)展开;collapsed = 两栏同时收起。
   // 收起时刻意不动 active —— 它本身就是「收起前展开的是哪个」的记忆,还原直接读它,
   // 无需再存一份"记住谁展开过"(冗余状态迟早和 active 不同步)。
-  const [active, setActive] = useState<Panel>('list')
-  const [collapsed, setCollapsed] = useState(false)
-  const [selectedId, setSelectedId] = useState<string | null>(null)
-  const [search, setSearch] = useState('')
-  const [status, setStatus] = useState('')
-  const [sort, setSort] = useState('created_desc')
+  // 这两个是纯 UI chrome:不进 URL(没人想分享"我把侧边栏收起来了"),存 localStorage。
+  const [active = 'list', setActive] = useLocalStorageState<Panel>('nav.active', {
+    defaultValue: 'list',
+  })
+  const [collapsed = false, setCollapsed] = useLocalStorageState<boolean>('nav.collapsed', {
+    defaultValue: false,
+  })
+
   // name 排序前端做,服务端固定用时间序拉取(created/updated 二选一)
   const serverSort = sort.startsWith('name') ? 'created_desc' : sort
 
-  const projects = useInfiniteProjects({ search, status, sort: serverSort })
+  // 刷新前加载到第几条:按筛选分桶存 sessionStorage(换了筛选就是另一批数据)。
+  // 只在挂载时读一次喂给首页请求,之后由下面的 effect 持续写回。
+  const scrollKey = `${search}|${status}|${sort}`
+  const loadedKey = `nav.loaded:${scrollKey}`
+  const [restoreCount] = useState(() => Number(sessionStorage.getItem(loadedKey)) || 0)
+
+  const projects = useInfiniteProjects({ search, status, sort: serverSort }, restoreCount)
   const stats = useProjectStats()
   const rawItems = (projects.data?.pages.flatMap((p) => p.items) ?? []) as ProjectSummary[]
   const items = useMemo(() => {
@@ -232,6 +264,12 @@ export function ProjectNav() {
 
   const detail = useProject(selectedId)
 
+  // 已加载条数写回:供下次刷新一次补齐(见 useInfiniteProjects 的 restoreCount)
+  const loadedCount = projects.data?.pages.reduce((n, p) => n + p.items.length, 0) ?? 0
+  useEffect(() => {
+    if (loadedCount > 0) sessionStorage.setItem(loadedKey, String(loadedCount))
+  }, [loadedKey, loadedCount])
+
   // 点 rail / 选项目 → 展开该栏(顺带解除整体收起)
   const openPanel = (panel: Panel) => {
     setActive(panel)
@@ -239,7 +277,7 @@ export function ProjectNav() {
   }
 
   const selectProject = (id: string) => {
-    setSelectedId(id)
+    void navigate({ search: (prev) => ({ ...prev, project: id }) })
     openPanel('detail')
   }
 
@@ -286,11 +324,11 @@ export function ProjectNav() {
             fetchNextPage={() => void projects.fetchNextPage()}
             refreshing={projects.isRefetching}
             search={search}
-            onSearch={setSearch}
+            onSearch={(value) => setFilter({ search: value || undefined })}
             status={status}
-            onStatusChange={setStatus}
+            onStatusChange={(value) => setFilter({ status: value || undefined })}
             sort={sort}
-            onSortChange={setSort}
+            onSortChange={(value) => setFilter({ sort: value })}
             onRefresh={refresh}
             onChangeStatus={(id, action) => changeStatus.mutate({ id, action })}
             statusChangingId={changeStatus.isPending ? (changeStatus.variables?.id ?? null) : null}
@@ -496,6 +534,24 @@ function ListContent({
   useScrollFade(viewportRef, 'vertical') // 列表上下阴影
   useScrollFade(tabsViewportRef, 'horizontal') // 状态 tab 左右阴影
 
+  // 滚动位置还原。router 内置的自动还原在 onRendered 同步执行,那会儿列表数据还没回来、
+  // 容器高度为 0,scrollTop 写下去会被夹成 0 —— 所以这里只借它的缓存(读 entry),
+  // 等内容真的够高了自己应用一次。restoredRef 保证只做一次,不然用户往回滚会被拽回去。
+  const scrollEntry = useElementScrollRestoration({
+    id: SCROLL_ID,
+    getElement: () => viewportRef.current,
+    getKey: listScrollKey, // 必须与 router 的 getScrollRestorationKey 同一个函数
+  })
+  const restoredRef = useRef(false)
+  useEffect(() => {
+    const el = viewportRef.current
+    const top = scrollEntry?.scrollY
+    if (restoredRef.current || !el || !top || !visible) return
+    if (el.scrollHeight < top + el.clientHeight) return // 内容还不够高,等下一批
+    el.scrollTop = top
+    restoredRef.current = true
+  }, [scrollEntry, visible, items.length])
+
   // 列表现在始终挂载(收起时只是 opacity-0),但 opacity-0 元素照样有布局、照样会命中
   // IntersectionObserver —— 不 gate 住就会在看不见的时候继续拉分页。
   useEffect(() => {
@@ -577,7 +633,11 @@ function ListContent({
         </Select>
       </div>
 
-      <ScrollArea viewportRef={viewportRef} className="min-h-0 flex-1">
+      <ScrollArea
+        viewportRef={viewportRef}
+        viewportProps={{ 'data-scroll-restoration-id': SCROLL_ID }}
+        className="min-h-0 flex-1"
+      >
         <div className="flex flex-col gap-2 p-2">
           {loading ? (
             <div className="flex items-center gap-2 p-3 text-sm text-muted-foreground">

@@ -16,10 +16,13 @@ function ScrollArea({
   className,
   children,
   viewportRef,
+  viewportProps,
   scrollbar = "hover",
   ...props
 }: ScrollAreaPrimitive.Root.Props & {
   viewportRef?: React.Ref<HTMLDivElement>
+  /** 透传到 Viewport(滚动的那层)。如 router 的 data-scroll-restoration-id */
+  viewportProps?: React.ComponentProps<"div"> & Record<`data-${string}`, string>
   scrollbar?: ScrollbarMode
 }) {
   return (
@@ -31,6 +34,7 @@ function ScrollArea({
       <ScrollAreaPrimitive.Viewport
         ref={viewportRef}
         data-slot="scroll-area-viewport"
+        {...viewportProps}
         className="size-full rounded-[inherit] transition-[color,box-shadow] outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-1"
       >
         {children}

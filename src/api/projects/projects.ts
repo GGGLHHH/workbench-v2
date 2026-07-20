@@ -28,15 +28,26 @@ type InfiniteProjects = InfiniteData<BffProjectPage, number>
 
 const isAbort = (error: unknown) => error instanceof ApiError && error.kind === 'abort'
 
+// BFF 的 limit 上限。刷新还原时首页一次拿回原来翻了几页的量,超过这个数只能还原到 100 条附近。
+const PROJECTS_MAX_LIMIT = 100
+
 // 无限列表:offset 分页,getNextPageParam 累加已加载数直到 total。sort 只认服务端字段
 // (created/updated);name 排序由调用方在已加载项上做(xchangeai 只支持时间字段服务端排序)。
-export function useInfiniteProjects(params: ProjectListParams) {
+//
+// restoreCount:刷新前已加载的条数。首页请求直接按这个量取,一次补齐 —— 否则从 20 条重来,
+// 还原的 scrollTop 超出内容高度会被夹到底,再触发 IO 连锁补页,看着会抽。
+// 用 ref 固化在挂载那一刻:它不进 queryKey(进了每次翻页都会换键重拉),
+// 只影响第一次请求;后续 pageParam>0 一律回到常规页大小。
+export function useInfiniteProjects(params: ProjectListParams, restoreCount = 0) {
+  const firstLimit = useRef(
+    Math.min(Math.max(restoreCount, PROJECTS_PAGE_SIZE), PROJECTS_MAX_LIMIT),
+  )
   return useInfiniteQuery({
     queryKey: queryKeys.projects.list(params),
     queryFn: ({ pageParam }) =>
       listBffProjects({
         query: {
-          limit: PROJECTS_PAGE_SIZE,
+          limit: pageParam === 0 ? firstLimit.current : PROJECTS_PAGE_SIZE,
           offset: pageParam,
           search: params.search || undefined,
           status: params.status || undefined,
