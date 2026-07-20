@@ -11,6 +11,8 @@ import {
   Image as ImageIcon,
   Info,
   Loader2,
+  PanelLeftClose,
+  PanelLeftOpen,
   User,
 } from 'lucide-react'
 
@@ -176,7 +178,11 @@ function useScrollFade(ref: React.RefObject<HTMLDivElement | null>, orientation:
 }
 
 export function ProjectNav() {
+  // active = 哪一栏(该)展开;collapsed = 两栏同时收起。
+  // 收起时刻意不动 active —— 它本身就是「收起前展开的是哪个」的记忆,还原直接读它,
+  // 无需再存一份"记住谁展开过"(冗余状态迟早和 active 不同步)。
   const [active, setActive] = useState<Panel>('list')
+  const [collapsed, setCollapsed] = useState(false)
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [search, setSearch] = useState('')
   const [status, setStatus] = useState('')
@@ -195,10 +201,19 @@ export function ProjectNav() {
 
   const detail = useProject(selectedId)
 
+  // 点 rail / 选项目 → 展开该栏(顺带解除整体收起)
+  const openPanel = (panel: Panel) => {
+    setActive(panel)
+    setCollapsed(false)
+  }
+
   const selectProject = (id: string) => {
     setSelectedId(id)
-    setActive('detail')
+    openPanel('detail')
   }
+
+  const listExpanded = !collapsed && active === 'list'
+  const detailExpanded = !collapsed && active === 'detail'
 
   const refresh = () => {
     void projects.refetch()
@@ -208,10 +223,28 @@ export function ProjectNav() {
   const changeStatus = useChangeProjectStatus()
 
   return (
-    <div className="flex h-full shrink-0 border-r bg-sidebar text-sidebar-foreground">
-      <Section expanded={active === 'list'} bordered>
-        {active === 'list' ? (
+    // 宽度走 CSS 变量(对齐官方 sidebar 的 --sidebar-width / --sidebar-width-icon):
+    // Section 与其中的层共用同一组值,不会各写各的magic number 而漂移。
+    <div
+      className="flex h-full shrink-0 border-r bg-sidebar text-sidebar-foreground"
+      style={{ '--panel-w': '24rem', '--panel-w-icon': '3rem' } as React.CSSProperties}
+    >
+      <Section
+        expanded={listExpanded}
+        bordered
+        rail={
+          // toggle 固定挂在最左侧 section 顶部 —— 无论展开/收起,它在屏幕上的位置基本不动
+          <Rail
+            icon={<FolderClosed className="size-4" />}
+            label="项目"
+            onExpand={() => openPanel('list')}
+            topAction={<CollapseToggle collapsed={collapsed} onToggle={() => setCollapsed((v) => !v)} />}
+          />
+        }
+        panel={
           <ListContent
+            visible={listExpanded}
+            onToggleCollapse={() => setCollapsed(true)}
             items={items}
             total={stats.data?.total ?? projects.data?.pages[0]?.total ?? items.length}
             statusCounts={stats.data?.statusCounts ?? {}}
@@ -233,63 +266,147 @@ export function ProjectNav() {
             selectedId={selectedId}
             onSelect={selectProject}
           />
-        ) : (
-          <Rail icon={<FolderClosed className="size-4" />} label="项目" onExpand={() => setActive('list')} />
-        )}
-      </Section>
+        }
+      />
 
-      <Section expanded={active === 'detail'}>
-        {active === 'detail' ? (
+      <Section
+        expanded={detailExpanded}
+        rail={
+          <Rail
+            icon={<Info className="size-4" />}
+            label="详情"
+            disabled={!selectedId}
+            onExpand={() => selectedId && openPanel('detail')}
+          />
+        }
+        panel={
           <DetailContent
             loading={detail.isPending && Boolean(selectedId)}
             project={detail.data}
             onBack={() => setActive('list')}
           />
-        ) : (
-          <Rail
-            icon={<Info className="size-4" />}
-            label="详情"
-            disabled={!selectedId}
-            onExpand={() => selectedId && setActive('detail')}
-          />
-        )}
-      </Section>
+        }
+      />
     </div>
   )
 }
 
-function Section({ expanded, bordered, children }: { expanded: boolean; bordered?: boolean; children: React.ReactNode }) {
+// 对齐 shadcn 官方 sidebar 的动画结构。要点(以前的写法三条全踩反了):
+//  1. 不做条件渲染 —— 面板与 rail 始终挂载,靠 CSS 交叉淡入。以前是 `expanded ? panel : rail`,
+//     点击瞬间内容就换掉了,而宽度还要慢慢动 300ms,于是「内容已变、容器还在爬」= 跳变。
+//  2. 两层各自保持固有宽度并绝对定位 —— 收缩时内容被 overflow 裁掉,而不是被挤扁回流
+//     (文字换行/元素重排在动画中途最显脏)。
+//  3. duration-200 ease-linear —— 官方用线性;宽度动画配 ease-in-out 会显得黏。
+function Section({
+  expanded,
+  bordered,
+  panel,
+  rail,
+}: {
+  expanded: boolean
+  bordered?: boolean
+  panel: React.ReactNode
+  rail: React.ReactNode
+}) {
   return (
     <section
+      data-state={expanded ? 'expanded' : 'collapsed'}
       className={cn(
-        'flex shrink-0 flex-col overflow-hidden transition-[width] duration-300 ease-in-out',
+        'relative shrink-0 overflow-hidden transition-[width] duration-200 ease-linear',
         bordered && 'border-r',
-        expanded ? 'w-96' : 'w-12',
+        expanded ? 'w-(--panel-w)' : 'w-(--panel-w-icon)',
       )}
     >
-      {children}
+      <Layer show={expanded} className="w-(--panel-w)">
+        {panel}
+      </Layer>
+      <Layer show={!expanded} className="w-(--panel-w-icon)">
+        {rail}
+      </Layer>
     </section>
   )
 }
 
-function Rail({ icon, label, onExpand, disabled }: { icon: React.ReactNode; label: string; onExpand: () => void; disabled?: boolean }) {
+// 隐藏层用 inert 彻底移出交互与无障碍树(React 19 支持布尔 inert),
+// 否则「看不见但能 Tab 到」——这是叠层方案最容易漏的坑。
+function Layer({
+  show,
+  className,
+  children,
+}: {
+  show: boolean
+  className?: string
+  children: React.ReactNode
+}) {
   return (
-    <button
-      type="button"
-      disabled={disabled}
-      onClick={onExpand}
-      className="flex h-full w-full flex-col items-center gap-3 py-3 transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground disabled:pointer-events-none disabled:opacity-40"
-      aria-label={`展开${label}`}
+    <div
+      inert={!show}
+      aria-hidden={!show}
+      className={cn(
+        'absolute inset-y-0 left-0 flex flex-col transition-opacity duration-200 ease-linear',
+        show ? 'opacity-100' : 'pointer-events-none opacity-0',
+        className,
+      )}
     >
-      {icon}
-      <span className="text-xs tracking-wider text-muted-foreground [writing-mode:vertical-rl]">{label}</span>
-    </button>
+      {children}
+    </div>
   )
 }
 
-// 展开态内容固定 w-96,避免动画期间随容器宽度回流。
+// 收起/展开整个侧边栏的开关。收起态由它还原到 active 那一栏。
+function CollapseToggle({ collapsed, onToggle }: { collapsed: boolean; onToggle: () => void }) {
+  const label = collapsed ? '展开侧边栏' : '收起侧边栏'
+  return (
+    <Button
+      variant="ghost"
+      size="icon"
+      className="size-7"
+      onClick={onToggle}
+      title={label}
+      aria-label={label}
+      aria-expanded={!collapsed}
+    >
+      {collapsed ? <PanelLeftOpen className="size-4" /> : <PanelLeftClose className="size-4" />}
+    </Button>
+  )
+}
+
+// topAction 固定在 rail 顶部(高度对齐详情面板的 h-11 头部),其下才是「点开本栏」的区域
+function Rail({
+  icon,
+  label,
+  onExpand,
+  disabled,
+  topAction,
+}: {
+  icon: React.ReactNode
+  label: string
+  onExpand: () => void
+  disabled?: boolean
+  topAction?: React.ReactNode
+}) {
+  return (
+    <div className="flex h-full w-full flex-col items-center">
+      {topAction ? <div className="flex h-11 shrink-0 items-center">{topAction}</div> : null}
+      <button
+        type="button"
+        disabled={disabled}
+        onClick={onExpand}
+        className="flex w-full min-h-0 flex-1 flex-col items-center gap-3 py-3 transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground disabled:pointer-events-none disabled:opacity-40"
+        aria-label={`展开${label}`}
+      >
+        {icon}
+        <span className="text-xs tracking-wider text-muted-foreground [writing-mode:vertical-rl]">
+          {label}
+        </span>
+      </button>
+    </div>
+  )
+}
+
+// 宽度由外层 Layer 给(w-(--panel-w)),这里铺满即可 —— 内容不随容器收缩回流。
 function PanelBody({ children }: { children: React.ReactNode }) {
-  return <div className="flex h-full w-96 flex-col">{children}</div>
+  return <div className="flex h-full w-full flex-col">{children}</div>
 }
 
 function ListContent({
@@ -313,6 +430,8 @@ function ListContent({
   statusChangingId,
   selectedId,
   onSelect,
+  onToggleCollapse,
+  visible,
 }: {
   items: ProjectSummary[]
   total: number
@@ -334,6 +453,8 @@ function ListContent({
   statusChangingId: string | null
   selectedId: string | null
   onSelect: (id: string) => void
+  onToggleCollapse: () => void
+  visible: boolean
 }) {
   const viewportRef = useRef<HTMLDivElement>(null)
   const sentinelRef = useRef<HTMLDivElement>(null)
@@ -341,10 +462,12 @@ function ListContent({
   useScrollFade(viewportRef, 'vertical') // 列表上下阴影
   useScrollFade(tabsViewportRef, 'horizontal') // 状态 tab 左右阴影
 
+  // 列表现在始终挂载(收起时只是 opacity-0),但 opacity-0 元素照样有布局、照样会命中
+  // IntersectionObserver —— 不 gate 住就会在看不见的时候继续拉分页。
   useEffect(() => {
     const root = viewportRef.current
     const sentinel = sentinelRef.current
-    if (!root || !sentinel || !hasNextPage) return
+    if (!root || !sentinel || !hasNextPage || !visible) return
     const io = new IntersectionObserver(
       (entries) => {
         if (entries[0]?.isIntersecting && !isFetchingNextPage) fetchNextPage()
@@ -353,14 +476,15 @@ function ListContent({
     )
     io.observe(sentinel)
     return () => io.disconnect()
-  }, [hasNextPage, isFetchingNextPage, fetchNextPage])
+  }, [hasNextPage, isFetchingNextPage, fetchNextPage, visible])
 
   return (
     <PanelBody>
       {/* 头部:标题 + 同步 + 搜索 + 状态筛选 tab */}
       <div className="flex flex-col gap-2 border-b p-2">
         <div className="flex items-center gap-2 px-1">
-          <FolderClosed className="size-4" />
+          {/* 与收起态 rail 顶部的 toggle 同一位置(最左),避免来回切时按钮跳位 */}
+          <CollapseToggle collapsed={false} onToggle={onToggleCollapse} />
           <span className="flex-1 text-sm font-semibold">项目</span>
           <Button variant="ghost" size="sm" className="h-7 gap-1 px-2 text-xs" disabled={refreshing} onClick={onRefresh}>
             {refreshing ? <Loader2 className="size-3.5 animate-spin" /> : <CloudDownload className="size-3.5" />} 同步
