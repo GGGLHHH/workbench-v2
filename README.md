@@ -11,8 +11,10 @@
   **去掉了 S3/minio**——素材上传与渲染产物落盘 `.data/`,经静态 `/media` 提供(免 docker)。
   - `/api/upload` 签发本地上传地址、`/api/blob/*` 收原始流入盘、`/api/delete-asset` 删除
   - `/api/render` 入队(内存 FIFO 单 worker)、`/api/progress` 轮询进度、产物 `.data/renders/*.mp4`
-- 已验证端到端:编辑器点「渲染」→ bundle 组合 → headless chrome → 1080×1920/30fps mp4 → 下载;素材 upload/取回/删除闭环。
-- **暂缺(下一步)**:`/api/captions` 字幕转录(whisper,现为 501 桩)、XChangeAI 集成。
+- **BFF(`bff/`,前端入口)**:Fastify + `@fastify/http-proxy`,:4100。控制面 `/api/*` 透明代理到渲染服务;自有产品面 `/bff/*`(session/projects,**内存桩**);鉴权 seam(`onRequest` 钩子,现恒放行,接 XChangeAI 时在此拦 401)。
+  - 权威模型 = `UndoableState`,产品字段挂 `metadata` sidecar,**BFF 不做模型翻译、不搬运媒体**。详见 `bff/README.md`。
+- 已验证端到端:编辑器点「渲染」→ vite → **BFF** → 渲染服务 → bundle → headless chrome → 1080×1920/30fps mp4 → 下载;素材 upload/取回/删除闭环;`/bff/session`、`/bff/projects` 桩可用。
+- **暂缺(下一步)**:BFF 下游接 XChangeAI(登录/项目/交付,现为桩)、`/api/captions` 字幕转录(whisper,501 桩)。
 
 ## 前置
 
@@ -21,13 +23,16 @@
 
 ## 运行
 
-需两个进程(两个终端):
+需三个进程(三个终端):
 
 ```bash
 pnpm install
-pnpm server   # 渲染服务器 :3011（首次渲染会自动下载 headless chrome）
-pnpm dev      # 编辑器 :5273（/api 代理到 :3011）
+pnpm server   # 渲染服务(下游) :3011（首次渲染会自动下载 headless chrome）
+pnpm bff      # BFF(前端入口) :4100（/api 代理到 :3011，自有 /bff/*）
+pnpm dev      # 编辑器 :5273（/api + /bff 代理到 :4100）
 ```
+
+拓扑:`编辑器 :5273 → BFF :4100 →(代理)→ 渲染服务 :3011`;素材/产物走 `:3011/media` 直连。详见 `bff/README.md`。
 
 ## 关键决策
 
