@@ -8,7 +8,7 @@ import Fastify from 'fastify';
 import cors from '@fastify/cors';
 import multipart from '@fastify/multipart';
 import fastifyStatic from '@fastify/static';
-import type { UndoableState } from '@gedatou/shared';
+import { contentDisposition, type UndoableState } from '@gedatou/shared';
 import { config } from './config';
 import { createUploadUrl, deleteObject, isSafeKey, writeStream } from './storage';
 import { enqueueRender, tasks } from './renderer';
@@ -24,6 +24,16 @@ await app.register(multipart, { limits: { fileSize: 64 * 1024 * 1024 } });
 // 素材/产物落盘目录 + 静态提供（浏览器与服务端渲染进程都从此取，publicUrl 为绝对地址）
 await mkdir(config.dataDir, { recursive: true });
 await app.register(fastifyStatic, { root: config.dataDir, prefix: '/media/' });
+
+// 渲染产物的下载文件名：产物 URL 跨源（浏览器 :5273 → 本服务），此时 <a download> 的文件名
+// 会被浏览器忽略，只能由服务端发 Content-Disposition。名字由 renderer 编进 URL 的 ?filename=
+// （无状态，重启不丢）。contentDisposition() 会转义非 ASCII 与控制字符，故不存在头注入。
+app.addHook('onSend', async (req, reply) => {
+  const name = (req.query as { filename?: string } | null)?.filename;
+  if (name && req.url.startsWith('/media/')) {
+    reply.header('content-disposition', contentDisposition(name));
+  }
+});
 
 // 素材 PUT 用原始二进制流入盘：为未注册的 content-type 提供“透传流”解析器
 // （JSON 仍走内置解析，multipart/form-data 仍走 @fastify/multipart）
@@ -57,13 +67,16 @@ app.post<{ Body: { key: string } }>('/api/delete-asset', async (req, reply) => {
 });
 
 // 4) 发起渲染
-app.post<{ Body: { state: UndoableState; codec: 'mp4' | 'webm' } }>('/api/render', async (req, reply) => {
-  const { state, codec } = req.body ?? {};
-  if (!state || (codec !== 'mp4' && codec !== 'webm')) {
-    return reply.code(400).send({ error: 'state and codec (mp4|webm) required' });
-  }
-  return { taskId: enqueueRender(state, codec) };
-});
+app.post<{ Body: { state: UndoableState; codec: 'mp4' | 'webm'; baseName?: string } }>(
+  '/api/render',
+  async (req, reply) => {
+    const { state, codec, baseName } = req.body ?? {};
+    if (!state || (codec !== 'mp4' && codec !== 'webm')) {
+      return reply.code(400).send({ error: 'state and codec (mp4|webm) required' });
+    }
+    return { taskId: enqueueRender(state, codec, baseName) };
+  },
+);
 
 // 5) 轮询渲染进度
 app.post<{ Body: { taskId: string } }>('/api/progress', async (req, reply) => {
