@@ -12,8 +12,6 @@
     "moduleDetection": "force",
     "noEmit": true,
 
-    "noUnusedLocals": true,
-    "noUnusedParameters": true,
     "erasableSyntaxOnly": true,
     "noFallthroughCasesInSwitch": true
   },

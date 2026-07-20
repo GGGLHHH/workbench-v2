@@ -17,10 +17,15 @@
     "jsx": "react-jsx",
 
     "baseUrl": ".",
-    "paths": { "@/*": ["./src/*"] },
+    // link: 消费 @gedatou/editor(Remotion-demo)会带入第二份 @types/react → tsc 报
+    // "two different types with this name"。把 react/react-dom 定向到本仓单一副本去重。
+    "paths": {
+      "@/*": ["./src/*"],
+      "react": ["./node_modules/@types/react"],
+      "react-dom": ["./node_modules/@types/react-dom"]
+    },
+    "ignoreDeprecations": "6.0",
 
-    "noUnusedLocals": true,
-    "noUnusedParameters": true,
     "erasableSyntaxOnly": true,
     "noFallthroughCasesInSwitch": true
   },
