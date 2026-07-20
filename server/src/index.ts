@@ -12,7 +12,8 @@ import { enqueueRender, tasks } from './renderer';
 // bodyLimit: /render 携带完整工程 state；素材 PUT 走原始流（本地视频可较大）
 const app = Fastify({ logger: true, bodyLimit: 512 * 1024 * 1024 });
 
-await app.register(cors, { origin: true });
+// 素材上传是跨源 PUT（浏览器 :5273 → 本服务）：CORS 必须放行 PUT，否则预检挡下、上传失败
+await app.register(cors, { origin: true, methods: ['GET', 'HEAD', 'POST', 'PUT', 'DELETE', 'OPTIONS'] });
 await app.register(multipart, { limits: { fileSize: 64 * 1024 * 1024 } });
 
 // 素材/产物落盘目录 + 静态提供（浏览器与服务端渲染进程都从此取，publicUrl 为绝对地址）

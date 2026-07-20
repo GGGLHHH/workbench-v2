@@ -7,8 +7,8 @@ import { registerProjectRoutes } from './projects';
 
 const app = Fastify({ logger: true });
 
-// 浏览器（:5273）跨源访问 BFF
-await app.register(cors, { origin: true });
+// 浏览器（:5273）跨源访问 BFF；放行 PUT（/bff/projects 保存、代理的素材 PUT）
+await app.register(cors, { origin: true, methods: ['GET', 'HEAD', 'POST', 'PUT', 'DELETE', 'OPTIONS'] });
 
 app.get('/healthz', async () => ({ ok: true, role: 'bff' }));
 
