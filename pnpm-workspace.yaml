@@ -1,0 +1,4 @@
+# 非 monorepo：此文件仅承载 pnpm 11 的项目级设置。
+# 放行 esbuild 构建脚本（tsx / @remotion/bundler 依赖），否则 pnpm exec/run 依赖检查会硬失败。
+allowBuilds:
+  esbuild: true

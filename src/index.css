@@ -1,0 +1,12 @@
+/* workbench-v2 CSS（策略1）：自带 Tailwind v4，@source 扫描 sibling 仓的库源码生成工具类，
+   再导入 @gedatou/editor 的 token 层。字体/动画/shadcn 基础样式由本仓拥有。 */
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+@import "@fontsource-variable/geist";
+
+/* 让 Tailwind 扫描库源码（pnpm link: 消费 ../Remotion-demo 源码）+ 本仓源码 */
+@source "../../Remotion-demo/packages/editor/src";
+
+/* @gedatou/editor 主题 token 层（oklch token + @theme 映射） */
+@import "@gedatou/editor/styles.css";
