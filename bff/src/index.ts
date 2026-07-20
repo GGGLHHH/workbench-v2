@@ -17,7 +17,7 @@ await app.register(cors, {
 
 // 下游 xchangeai(ky HTTPError)的状态透给前端——尤其 401 让前端跳登录,而非一律 500。
 // 不读上游 body(ky 已消费),仅转发状态码 + 概要 message。
-app.setErrorHandler((error, req, reply) => {
+app.setErrorHandler((error: Error, req, reply) => {
   const status = (error as { response?: { status?: number } }).response?.status;
   if (status) return reply.code(status).send({ error: 'Upstream error', message: error.message });
   req.log.error(error);
@@ -33,11 +33,10 @@ await app.register(swagger, {
     buildLocalReference: (json, _base, _fragment, i) =>
       typeof (json as { $id?: unknown }).$id === 'string' ? (json as { $id: string }).$id : `def-${i}`,
   },
-  // 产品契约只暴露 /bff/*;隐藏基础设施路由(/healthz、/openapi.yaml、/api 渲染代理)
-  transform: ({ schema, url }: { schema?: Record<string, unknown>; url: string }) =>
-    url.startsWith('/bff')
-      ? { schema: (schema ?? {}) as never, url }
-      : { schema: { ...(schema ?? {}), hide: true } as never, url },
+  // 产品契约只暴露 /bff/*;隐藏基础设施路由(/healthz、/openapi.yaml、/api 渲染代理)。
+  // 参数类型由 SwaggerTransform 推导(hide 是 @fastify/swagger 对 FastifySchema 的类型增广)。
+  transform: ({ schema, url }) =>
+    url.startsWith('/bff') ? { schema, url } : { schema: { ...schema, hide: true }, url },
 });
 
 app.get('/healthz', async () => ({ ok: true, role: 'bff' }));
