@@ -4,7 +4,7 @@ import path from 'node:path';
 import fs from 'node:fs/promises';
 import { bundle } from '@remotion/bundler';
 import { ensureBrowser, renderMedia, selectComposition } from '@remotion/renderer';
-import { buildDownloadName, newId, type UndoableState } from '@gedatou/shared';
+import { newId, sanitizeFileName, type UndoableState } from '@gedatou/shared';
 import { writeBuffer } from './storage';
 
 // 渲染入口：@gedatou/shared 的 Remotion composition（registerRoot，id="Main"）。
@@ -44,7 +44,7 @@ const pump = async (): Promise<void> => {
 export const enqueueRender = (
   state: UndoableState,
   codec: 'mp4' | 'webm',
-  baseName?: string,
+  fileName?: string,
 ): string => {
   const taskId = newId();
   tasks.set(taskId, { status: 'queued', progress: 0 });
@@ -69,8 +69,9 @@ export const enqueueRender = (
       // 磁盘名保持 taskId（唯一、纯 ASCII）；给人看的下载名走 URL 上的 ?filename=，
       // 由 /media 静态路由据此发 Content-Disposition（见 index.ts 的 onSend 钩子）。
       // 编进 URL 而非存内存：无状态，任务表随进程重启丢了也不影响已发出的下载链接。
+      // 名字由前端组装传入，这里只做防御性清洗——客户端输入不可信；给不出就回退 taskId 名。
       const url = await writeBuffer(`renders/${taskId}.${codec}`, await fs.readFile(outputLocation));
-      const downloadName = buildDownloadName(codec, baseName, new Date());
+      const downloadName = sanitizeFileName(fileName ?? '') || `${taskId}.${codec}`;
       task.url = `${url}?filename=${encodeURIComponent(downloadName)}`;
       task.progress = 1;
       task.status = 'done';

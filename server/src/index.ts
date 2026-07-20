@@ -67,14 +67,14 @@ app.post<{ Body: { key: string } }>('/api/delete-asset', async (req, reply) => {
 });
 
 // 4) 发起渲染
-app.post<{ Body: { state: UndoableState; codec: 'mp4' | 'webm'; baseName?: string } }>(
+app.post<{ Body: { state: UndoableState; codec: 'mp4' | 'webm'; fileName?: string } }>(
   '/api/render',
   async (req, reply) => {
-    const { state, codec, baseName } = req.body ?? {};
+    const { state, codec, fileName } = req.body ?? {};
     if (!state || (codec !== 'mp4' && codec !== 'webm')) {
       return reply.code(400).send({ error: 'state and codec (mp4|webm) required' });
     }
-    return { taskId: enqueueRender(state, codec, baseName) };
+    return { taskId: enqueueRender(state, codec, fileName) };
   },
 );
 
