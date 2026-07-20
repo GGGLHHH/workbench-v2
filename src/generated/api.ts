@@ -27,3 +27,6 @@ export function loginBffSession(): string {
 export function logoutBffSession(): string {
     return "/bff/session";
 }
+export function refreshBffSession(): string {
+    return "/bff/session/refresh";
+}

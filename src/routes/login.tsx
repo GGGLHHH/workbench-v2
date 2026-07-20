@@ -6,7 +6,8 @@ import { LoginPage } from './-login-page'
 export const Route = createFileRoute('/login')({
   validateSearch: validateLoginSearch,
   beforeLoad: async ({ context }) => {
-    const session = await context.auth.getCurrentUser()
+    // 游客守卫用软探测:只看「是否已登录」,不触发刷新阶梯 / 不弹「会话已过期」
+    const session = await context.auth.getCurrentUserSoft()
     if (session?.authenticated) throw redirect({ to: '/' })
   },
   component: LoginPage,

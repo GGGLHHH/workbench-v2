@@ -4,7 +4,7 @@
 import type { ApiRequestOptions } from "@/lib/api-client";
 import { requestJson, requestVoid } from "@/lib/api-client";
 import type { BffLoginRequest, BffProject, BffProjectPage, BffProjectSaveRequest, BffProjectSaveResponse, BffProjectStats, BffProjectStatusResponse, BffSession, BffStatusActionRequest, ChangeBffProjectStatusPath, GetBffProjectPath, ListBffProjectsQuery, LogoutBffSessionResponse, SaveBffProjectPath } from "./api-types";
-import { listBffProjects as buildListBffProjectsPath, getBffProjectStats as buildGetBffProjectStatsPath, getBffProject as buildGetBffProjectPath, saveBffProject as buildSaveBffProjectPath, changeBffProjectStatus as buildChangeBffProjectStatusPath, getBffSession as buildGetBffSessionPath, loginBffSession as buildLoginBffSessionPath, logoutBffSession as buildLogoutBffSessionPath } from "./api";
+import { listBffProjects as buildListBffProjectsPath, getBffProjectStats as buildGetBffProjectStatsPath, getBffProject as buildGetBffProjectPath, saveBffProject as buildSaveBffProjectPath, changeBffProjectStatus as buildChangeBffProjectStatusPath, getBffSession as buildGetBffSessionPath, loginBffSession as buildLoginBffSessionPath, logoutBffSession as buildLogoutBffSessionPath, refreshBffSession as buildRefreshBffSessionPath } from "./api";
 type RuntimeRequestOptions = Omit<ApiRequestOptions, "json" | "method" | "searchParams" | "signal">;
 function buildSearchParams(query: Record<string, unknown> | undefined): URLSearchParams | undefined {
     if (query === undefined)
@@ -134,6 +134,19 @@ export function logoutBffSession(options: LogoutBffSessionOptions, requestOption
     return requestJson<LogoutBffSessionResponse>(buildLogoutBffSessionPath(), {
         ...requestOptions,
         method: "DELETE",
+        signal: options.signal
+    });
+}
+export interface RefreshBffSessionOptions {
+    query?: never;
+    path?: never;
+    body?: never;
+    signal?: AbortSignal;
+}
+export function refreshBffSession(options: RefreshBffSessionOptions, requestOptions: RuntimeRequestOptions = {}): Promise<BffSession> {
+    return requestJson<BffSession>(buildRefreshBffSessionPath(), {
+        ...requestOptions,
+        method: "POST",
         signal: options.signal
     });
 }

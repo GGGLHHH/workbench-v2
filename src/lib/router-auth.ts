@@ -7,8 +7,12 @@ import { queryKeys } from '@/lib/query-keys'
 const SESSION_STALE_TIME = 5 * 60 * 1000
 
 export interface RouterAuth {
-  // null = 明确未登录;BffSession = 已登录当前用户
+  // 受保护路由守卫用:硬探测。access 过期(401)时走 api-client 刷新阶梯自动恢复;
+  // refresh 也失效才返回 null(此时 api-client 已 toast「会话已过期」+ 跳登录)。
   getCurrentUser: () => Promise<BffSession | null>
+  // 游客守卫用(登录页「已登录就跳走」):软探测。只判断是否已登录,不刷新、不弹「过期」——
+  // 未登录访客坐在登录页不该被自动刷新或提示。
+  getCurrentUserSoft: () => Promise<BffSession | null>
 }
 
 function getErrorStatus(error: unknown): number | undefined {
@@ -19,24 +23,28 @@ function getErrorStatus(error: unknown): number | undefined {
 }
 
 export function createRouterAuth(queryClient: QueryClient): RouterAuth {
-  return {
-    async getCurrentUser() {
-      const cached = queryClient.getQueryData<BffSession | null>(queryKeys.session())
-      if (cached !== undefined) return cached ?? null
+  const read = async (soft: boolean): Promise<BffSession | null> => {
+    const cached = queryClient.getQueryData<BffSession | null>(queryKeys.session())
+    if (cached !== undefined) return cached ?? null
 
-      try {
-        // soft 探测:401 不触发 api-client 的跳转级联(守卫自己决定跳哪)
-        const session = await queryClient.fetchQuery({
-          queryFn: () => getBffSession({}, { headers: { [SOFT_AUTH_HEADER]: '1' } }),
-          queryKey: queryKeys.session(),
-          retry: false,
-          staleTime: SESSION_STALE_TIME,
-        })
-        return session ?? null
-      } catch (error) {
-        if (getErrorStatus(error) === 401) return null
-        throw error
-      }
-    },
+    try {
+      // soft:带软探测头 → 401 只抛错,不触发刷新/跳转级联(守卫自己决定跳哪)。
+      // 非 soft:硬探测 → 401 进 api-client 刷新阶梯(access 过期时透明恢复)。
+      const session = await queryClient.fetchQuery({
+        queryFn: () => getBffSession({}, soft ? { headers: { [SOFT_AUTH_HEADER]: '1' } } : {}),
+        queryKey: queryKeys.session(),
+        retry: false,
+        staleTime: SESSION_STALE_TIME,
+      })
+      return session ?? null
+    } catch (error) {
+      if (getErrorStatus(error) === 401) return null
+      throw error
+    }
+  }
+
+  return {
+    getCurrentUser: () => read(false),
+    getCurrentUserSoft: () => read(true),
   }
 }

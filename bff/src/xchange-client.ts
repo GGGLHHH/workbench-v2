@@ -40,3 +40,19 @@ export async function loginRaw(identifier: string, password: string): Promise<st
     (res.headers.get('set-cookie') ? [res.headers.get('set-cookie')!] : [])
   );
 }
+
+/**
+ * 刷新会话:原始 POST /auth/refresh,转发浏览器会话 cookie(内含 refresh_token),
+ * 返回 xchangeai 下发的新 Set-Cookie(access_token 轮换,可能一并轮换 refresh_token)。
+ * 无 / 失效的 refresh_token → xchangeai 401(ky 抛 HTTPError → BFF setErrorHandler 透传 401)。
+ */
+export async function refreshRaw(cookie: string | undefined): Promise<string[]> {
+  const res = await ky.post(`${base}/auth/refresh`, {
+    headers: cookie ? { cookie } : {},
+    timeout: 30_000,
+  });
+  return (
+    res.headers.getSetCookie?.() ??
+    (res.headers.get('set-cookie') ? [res.headers.get('set-cookie')!] : [])
+  );
+}
