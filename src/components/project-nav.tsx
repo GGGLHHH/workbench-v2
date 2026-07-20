@@ -42,6 +42,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
+import { AnimatedItem } from '@/components/AnimatedList'
 import { SearchInput } from '@/components/form/search-input'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -588,15 +589,19 @@ function ListContent({
             <div className="p-3 text-sm text-muted-foreground">没有匹配的项目</div>
           ) : (
             <>
-              {items.map((p) => (
-                <ProjectCard
-                  key={p.id}
-                  project={p}
-                  active={selectedId === p.id}
-                  busy={statusChangingId === p.id}
-                  onOpen={() => onSelect(p.id)}
-                  onChangeStatus={onChangeStatus}
-                />
+              {/* React Bits AnimatedItem:滚入视野时 scale/opacity 入场。
+                  只取它的 item 层 —— 外层滚动容器与渐变由 ScrollArea + useScrollFade 负责,
+                  排版交给父级 gap-2,所以 className 置空去掉它默认的 mb-4。 */}
+              {items.map((p, i) => (
+                <AnimatedItem key={p.id} index={i} delay={0.1} className="">
+                  <ProjectCard
+                    project={p}
+                    active={selectedId === p.id}
+                    busy={statusChangingId === p.id}
+                    onOpen={() => onSelect(p.id)}
+                    onChangeStatus={onChangeStatus}
+                  />
+                </AnimatedItem>
               ))}
               <div ref={sentinelRef} aria-hidden className="h-px" />
               {isFetchingNextPage ? (
