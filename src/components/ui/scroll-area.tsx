@@ -3,12 +3,25 @@ import { ScrollArea as ScrollAreaPrimitive } from "@base-ui/react/scroll-area"
 
 import { cn } from "@/lib/utils"
 
+/**
+ * 滚动条显示策略:
+ * - hover  默认。平时隐去,指针进入或正在滚动时淡入(靠 Base UI 自带的
+ *          data-hovering / data-scrolling,不用自己挂 group)
+ * - always 常驻(shadcn 原版行为)
+ * - none   完全不渲染(滚动照常)。用于边缘渐隐已经在示意可滚动的地方
+ */
+type ScrollbarMode = "always" | "hover" | "none"
+
 function ScrollArea({
   className,
   children,
   viewportRef,
+  scrollbar = "hover",
   ...props
-}: ScrollAreaPrimitive.Root.Props & { viewportRef?: React.Ref<HTMLDivElement> }) {
+}: ScrollAreaPrimitive.Root.Props & {
+  viewportRef?: React.Ref<HTMLDivElement>
+  scrollbar?: ScrollbarMode
+}) {
   return (
     <ScrollAreaPrimitive.Root
       data-slot="scroll-area"
@@ -22,9 +35,13 @@ function ScrollArea({
       >
         {children}
       </ScrollAreaPrimitive.Viewport>
-      <ScrollBar />
-      <ScrollBar orientation="horizontal" />
-      <ScrollAreaPrimitive.Corner />
+      {scrollbar === "none" ? null : (
+        <>
+          <ScrollBar mode={scrollbar} />
+          <ScrollBar mode={scrollbar} orientation="horizontal" />
+          <ScrollAreaPrimitive.Corner />
+        </>
+      )}
     </ScrollAreaPrimitive.Root>
   )
 }
@@ -32,15 +49,17 @@ function ScrollArea({
 function ScrollBar({
   className,
   orientation = "vertical",
+  mode = "hover",
   ...props
-}: ScrollAreaPrimitive.Scrollbar.Props) {
+}: ScrollAreaPrimitive.Scrollbar.Props & { mode?: ScrollbarMode }) {
   return (
     <ScrollAreaPrimitive.Scrollbar
       data-slot="scroll-area-scrollbar"
       data-orientation={orientation}
       orientation={orientation}
       className={cn(
-        "flex touch-none p-px transition-colors select-none data-horizontal:h-2.5 data-horizontal:flex-col data-horizontal:border-t data-horizontal:border-t-transparent data-vertical:h-full data-vertical:w-2.5 data-vertical:border-l data-vertical:border-l-transparent",
+        "flex touch-none p-px transition-[color,opacity] select-none data-horizontal:h-2.5 data-horizontal:flex-col data-horizontal:border-t data-horizontal:border-t-transparent data-vertical:h-full data-vertical:w-2.5 data-vertical:border-l data-vertical:border-l-transparent",
+        mode === "hover" && "opacity-0 data-hovering:opacity-100 data-scrolling:opacity-100",
         className
       )}
       {...props}
@@ -53,4 +72,4 @@ function ScrollBar({
   )
 }
 
-export { ScrollArea, ScrollBar }
+export { ScrollArea, ScrollBar, type ScrollbarMode }

@@ -530,10 +530,8 @@ function ListContent({
           aria-label="搜索项目"
           inputClassName="h-8 text-sm"
         />
-        <ScrollArea
-          viewportRef={tabsViewportRef}
-          className="w-full [&_[data-slot=scroll-area-scrollbar]]:hidden"
-        >
+        {/* tab 条本来就有左右渐隐,再加一条横向滚动条只会挤掉半行高度 */}
+        <ScrollArea viewportRef={tabsViewportRef} scrollbar="none" className="w-full">
           <div className="flex w-max gap-1">
             {STATUS_TABS.map((tab) => {
               const count = tab.id ? (statusCounts[tab.id] ?? 0) : total
