@@ -11,10 +11,11 @@
   **去掉了 S3/minio**——素材上传与渲染产物落盘 `.data/`,经静态 `/media` 提供(免 docker)。
   - `/api/upload` 签发本地上传地址、`/api/blob/*` 收原始流入盘、`/api/delete-asset` 删除
   - `/api/render` 入队(内存 FIFO 单 worker)、`/api/progress` 轮询进度、产物 `.data/renders/*.mp4`
+  - `/api/captions` 字幕转录(whisper.cpp,逐词时间戳);**复用 Remotion-demo 已构建的 `.whisper/`(binary + base 模型),免编译免下载**,`WHISPER_DIR`/`WHISPER_MODEL` 可覆盖
 - **BFF(`bff/`,前端入口)**:Fastify + `@fastify/http-proxy`,:4100。控制面 `/api/*` 透明代理到渲染服务;自有产品面 `/bff/*`(session/projects,**内存桩**);鉴权 seam(`onRequest` 钩子,现恒放行,接 XChangeAI 时在此拦 401)。
   - 权威模型 = `UndoableState`,产品字段挂 `metadata` sidecar,**BFF 不做模型翻译、不搬运媒体**。详见 `bff/README.md`。
 - 已验证端到端:编辑器点「渲染」→ vite → **BFF** → 渲染服务 → bundle → headless chrome → 1080×1920/30fps mp4 → 下载;素材 upload/取回/删除闭环;`/bff/session`、`/bff/projects` 桩可用。
-- **暂缺(下一步)**:BFF 下游接 XChangeAI(登录/项目/交付,现为桩)、`/api/captions` 字幕转录(whisper,501 桩)。
+- **暂缺(下一步)**:BFF 下游接 XChangeAI(登录/项目/交付,现为桩)。
 
 ## 前置
 

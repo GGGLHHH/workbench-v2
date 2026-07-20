@@ -1,5 +1,9 @@
-import { mkdir } from 'node:fs/promises';
+import { createWriteStream } from 'node:fs';
+import { mkdir, rm } from 'node:fs/promises';
 import type { IncomingMessage } from 'node:http';
+import os from 'node:os';
+import path from 'node:path';
+import { pipeline } from 'node:stream/promises';
 import Fastify from 'fastify';
 import cors from '@fastify/cors';
 import multipart from '@fastify/multipart';
@@ -8,6 +12,7 @@ import type { UndoableState } from '@gedatou/shared';
 import { config } from './config';
 import { createUploadUrl, deleteObject, isSafeKey, writeStream } from './storage';
 import { enqueueRender, tasks } from './renderer';
+import { transcribeAudio } from './whisper';
 
 // bodyLimit: /render 携带完整工程 state；素材 PUT 走原始流（本地视频可较大）
 const app = Fastify({ logger: true, bodyLimit: 512 * 1024 * 1024 });
@@ -67,9 +72,18 @@ app.post<{ Body: { taskId: string } }>('/api/progress', async (req, reply) => {
   return task;
 });
 
-// 字幕转录（whisper）暂未接入——需要时从 Remotion-demo/apps/server/src/whisper.ts 单文件移植 + 加 @remotion/install-whisper-cpp
-app.post('/api/captions', async (_req, reply) =>
-  reply.code(501).send({ error: 'captions 未配置：接字幕时移植 whisper.ts（见 README）' }),
-);
+// 字幕转录：接收 16kHz 单声道 WAV（客户端已转好）→ whisper.cpp。
+// 首次调用校验/安装 whisper.cpp + 模型（默认复用 Remotion-demo 已构建，通常秒回）。
+app.post('/api/captions', async (req, reply) => {
+  const file = await req.file();
+  if (!file) return reply.code(400).send({ error: 'audio file required' });
+  const tmpPath = path.join(os.tmpdir(), `captions-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.wav`);
+  try {
+    await pipeline(file.file, createWriteStream(tmpPath));
+    return { captions: await transcribeAudio(tmpPath) };
+  } finally {
+    await rm(tmpPath, { force: true });
+  }
+});
 
 await app.listen({ port: config.port, host: '0.0.0.0' });
