@@ -50,19 +50,18 @@ const pageQuery = (params: ProjectListParams, index: number) => ({
  *
  * boot 页额外的作用是拿 total:虚拟化器要先知道总高度才能定位,而 BFF 每页都返 total。
  * 还原时 boot 直接取锚点所在页,于是「刷新 → 落回原位」始终是一个请求。
+ *
+ * 入参是「页号区间」而非「条目区间」:后者每滚一行就变一次,会把 setState + useQueries
+ * 重建摊到每一帧上;数据其实只关心跨没跨页,量化到页后 20 行才更新一次。
  */
-export function useProjectPages(params: ProjectListParams, range: { start: number; end: number }) {
-  const bootIndex = Math.floor(Math.max(range.start, 0) / PROJECTS_PAGE_SIZE)
-  const boot = useQuery(pageQuery(params, bootIndex))
+export function useProjectPages(params: ProjectListParams, pageRange: { start: number; end: number }) {
+  const boot = useQuery(pageQuery(params, pageRange.start))
   const total = boot.data?.total ?? 0
 
-  // 可见区间覆盖的页号。total 未知时只取 boot 页(此时列表还没高度,虚拟化器也报不出区间)。
-  const firstPage = bootIndex
-  const lastPage = total
-    ? Math.min(Math.floor(range.end / PROJECTS_PAGE_SIZE), Math.floor((total - 1) / PROJECTS_PAGE_SIZE))
-    : bootIndex
+  // 可见区间覆盖的页号。total 未知时只有 boot 页(列表还没高度,虚拟化器也报不出区间)。
+  const lastPage = total ? Math.min(pageRange.end, Math.floor((total - 1) / PROJECTS_PAGE_SIZE)) : pageRange.start
   const indexes: number[] = []
-  for (let i = Math.min(firstPage, lastPage); i <= Math.max(firstPage, lastPage); i++) indexes.push(i)
+  for (let i = pageRange.start; i <= Math.max(pageRange.start, lastPage); i++) indexes.push(i)
 
   const results = useQueries({ queries: indexes.map((i) => pageQuery(params, i)) })
 

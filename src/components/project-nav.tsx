@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useSearch } from '@tanstack/react-router'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import { useLocalStorageState } from 'ahooks'
@@ -184,11 +184,9 @@ const SORT_OPTIONS = [
 /** 供路由 validateSearch 校验 URL 上的 sort —— 脏值会让 Select 显示空白 */
 export const SORT_VALUES = SORT_OPTIONS.map((o) => o.value)
 
-// 行高估算 = 实测的卡片高度(缩略图 56 + 两行元信息 + 底栏 = 115,间距 8)。
-// 标题偶尔折两行,故仍挂 measureElement 修正;但 estimate 必须贴近真值 ——
-// 还原时锚点上方那些行从没渲染过、只有估算高度,估偏多少就漂多少
-// (估 156 时 53 行漂了 533px)。
-const ROW_ESTIMATE = 115
+// 卡片定高:缩略图 56 + 两行元信息 + 底栏 = 115,行间距 8。
+// 标题是 truncate 不换行、面板定宽,实测 70 行全是 115,故按定高处理。
+const ROW_HEIGHT = 115
 const ROW_GAP = 8
 
 // 视口顶部那一条 + 视口切在它内部的像素偏移。存这个而不是 scrollTop:
@@ -218,18 +216,28 @@ function useScrollFade(ref: React.RefObject<HTMLDivElement | null>, orientation:
           : el.scrollLeft + el.clientWidth < el.scrollWidth - 1
       const dir = orientation === 'vertical' ? 'to bottom' : 'to right'
       const mask = `linear-gradient(${dir}, ${start ? 'transparent' : '#000'}, #000 ${FADE}px, #000 calc(100% - ${FADE}px), ${end ? 'transparent' : '#000'})`
+      // 遮罩只有四种取值(两个布尔),值没变就别写 —— 改 mask-image 会让整层重绘,
+      // 每个 scroll 事件都写一次是滚动卡顿的另一个来源。
+      if (mask === lastMask) return
+      lastMask = mask
       el.style.setProperty('mask-image', mask)
       el.style.setProperty('-webkit-mask-image', mask)
     }
+    let lastMask = ''
+    let raf = 0
+    const onScroll = () => {
+      if (!raf) raf = requestAnimationFrame(() => ((raf = 0), apply()))
+    }
     apply()
-    el.addEventListener('scroll', apply, { passive: true })
+    el.addEventListener('scroll', onScroll, { passive: true })
     // 视口尺寸不随内容变 —— 只观察 el,内容变高(切 view/edit、加载更多)时不会重算,
     // 遮罩就停在旧状态。连内容容器一起观察才盖得住。
     const ro = new ResizeObserver(apply)
     ro.observe(el)
     if (el.firstElementChild) ro.observe(el.firstElementChild)
     return () => {
-      el.removeEventListener('scroll', apply)
+      if (raf) cancelAnimationFrame(raf)
+      el.removeEventListener('scroll', onScroll)
       ro.disconnect()
     }
   }, [ref, orientation])
@@ -271,15 +279,25 @@ export function ProjectNav() {
     setCollapsed(false)
   }
 
-  const selectProject = (id: string) => {
-    void navigate({ search: (prev) => ({ ...prev, project: id }) })
-    openPanel('detail')
-  }
+  // useCallback:这两个会一路传到 memo 化的 ProjectCard,身份不稳 memo 就失效
+  const selectProject = useCallback(
+    (id: string) => {
+      void navigate({ search: (prev) => ({ ...prev, project: id }) })
+      setActive('detail')
+      setCollapsed(false)
+    },
+    [navigate, setActive, setCollapsed],
+  )
 
   const listExpanded = !collapsed && active === 'list'
   const detailExpanded = !collapsed && active === 'detail'
 
   const changeStatus = useChangeProjectStatus()
+  const changeStatusMutate = changeStatus.mutate
+  const changeProjectStatus = useCallback(
+    (id: string, action: string) => changeStatusMutate({ id, action }),
+    [changeStatusMutate],
+  )
 
   return (
     // 宽度走 CSS 变量(对齐官方 sidebar 的 --sidebar-width / --sidebar-width-icon):
@@ -314,7 +332,7 @@ export function ProjectNav() {
             sort={sort}
             onSortChange={(value) => setFilter({ sort: value })}
             onRefreshStats={() => void stats.refetch()}
-            onChangeStatus={(id, action) => changeStatus.mutate({ id, action })}
+            onChangeStatus={changeProjectStatus}
             statusChangingId={changeStatus.isPending ? (changeStatus.variables?.id ?? null) : null}
             selectedId={selectedId}
             onSelect={selectProject}
@@ -509,18 +527,19 @@ function ListContent({
   const anchorKey = `nav.anchor:${params.search}|${params.status}|${params.sort}`
   const [anchor, setAnchor] = useState<Anchor | null>(() => readAnchor(anchorKey))
 
-  // 可见区间 → 该取哪几页。初值直接落在锚点所在页,于是「刷新 → 回到原位」只有一个请求,
+  // 该取哪几页。初值直接落在锚点所在页,于是「刷新 → 回到原位」只有一个请求,
   // 与滚动深度无关(第 20 条和第 3847 条一样快)。
-  const [range, setRange] = useState(() => ({
-    start: anchor?.index ?? 0,
-    end: (anchor?.index ?? 0) + PROJECTS_PAGE_SIZE,
-  }))
-  const { total, itemAt, isPending, isError, isFetching, refetch } = useProjectPages(params, range)
+  const anchorPage = Math.floor((anchor?.index ?? 0) / PROJECTS_PAGE_SIZE)
+  const [pageRange, setPageRange] = useState(() => ({ start: anchorPage, end: anchorPage }))
+  const { total, itemAt, isPending, isError, isFetching, refetch } = useProjectPages(params, pageRange)
 
+  // 定高:实测全部 70 行都是 115px(标题 truncate 不换行、面板定宽),
+  // 所以不挂 measureElement —— 每行一个 ResizeObserver、每次测量触发重算,
+  // 是滚动卡顿的大头。定高还顺带让锚点偏移天然精确,不存在估算漂移。
   const virtualizer = useVirtualizer({
     count: total,
     getScrollElement: () => viewportRef.current,
-    estimateSize: () => ROW_ESTIMATE,
+    estimateSize: () => ROW_HEIGHT,
     overscan: 6,
     gap: ROW_GAP,
   })
@@ -534,7 +553,11 @@ function ListContent({
     const first = virtualItems[0]?.index
     const last = virtualItems[virtualItems.length - 1]?.index
     if (first === undefined || last === undefined) return
-    setRange((r) => (r.start === first && r.end === last ? r : { start: first, end: last }))
+    // 量化到页号再 setState:按条目算的话每滚一行就是一次 setState + useQueries 重建,
+    // 等于把渲染摊到每一帧;按页算 20 行才动一次。
+    const start = Math.floor(first / PROJECTS_PAGE_SIZE)
+    const end = Math.floor(last / PROJECTS_PAGE_SIZE)
+    setPageRange((r) => (r.start === start && r.end === end ? r : { start, end }))
   }, [virtualItems, anchor])
 
   // 切筛选 = 换了一批数据:重读该桶的锚点、解封还原标记(否则回到原筛选也不还原了)、
@@ -544,7 +567,8 @@ function ListContent({
     const next = readAnchor(anchorKey)
     restoredRef.current = false
     setAnchor(next)
-    setRange({ start: next?.index ?? 0, end: (next?.index ?? 0) + PROJECTS_PAGE_SIZE })
+    const page = Math.floor((next?.index ?? 0) / PROJECTS_PAGE_SIZE)
+    setPageRange({ start: page, end: page })
     if (!next) viewportRef.current?.scrollTo({ top: 0 })
   }, [anchorKey])
 
@@ -693,7 +717,6 @@ function ListContent({
                 <div
                   key={row.key}
                   data-index={row.index}
-                  ref={virtualizer.measureElement}
                   className="absolute inset-x-2 top-0"
                   style={{ transform: `translateY(${row.start}px)` }}
                 >
@@ -702,14 +725,14 @@ function ListContent({
                       project={project as ProjectSummary}
                       active={selectedId === project.id}
                       busy={statusChangingId === project.id}
-                      onOpen={() => onSelect(project.id)}
+                      onOpen={onSelect}
                       onChangeStatus={onChangeStatus}
                     />
                   ) : (
                     // tombstone:该行所在页还在路上。占住估算高度,避免滚动条抽搐
                     <div
                       className="animate-pulse rounded-lg border bg-card/40"
-                      style={{ height: ROW_ESTIMATE }}
+                      style={{ height: ROW_HEIGHT }}
                     />
                   )}
                 </div>
@@ -793,7 +816,10 @@ function Thumb({ url, kind, className }: { url: string | null; kind: string | nu
   )
 }
 
-function ProjectCard({
+// memo:滚动时虚拟化器每帧都产出新数组,不 memo 的话这 20 张卡片(连同里面的
+// <video preload="metadata">)每帧全部重新协调 —— 这是滚动卡顿的最后一块。
+// 回调收 id 而不是闭包,否则每行每帧都是新函数,memo 直接失效。
+const ProjectCard = memo(function ProjectCard({
   project,
   active,
   busy,
@@ -803,7 +829,7 @@ function ProjectCard({
   project: ProjectSummary
   active: boolean
   busy: boolean
-  onOpen: () => void
+  onOpen: (id: string) => void
   onChangeStatus: (id: string, action: string) => void
 }) {
   return (
@@ -813,7 +839,7 @@ function ProjectCard({
         active ? 'border-primary ring-1 ring-primary/40' : 'hover:border-ring/40',
       )}
     >
-      <button type="button" onClick={onOpen} className="flex w-full gap-3 p-2.5 text-left">
+      <button type="button" onClick={() => onOpen(project.id)} className="flex w-full gap-3 p-2.5 text-left">
         <Thumb url={project.thumbnailUrl} kind={project.thumbnailKind} className="size-14" />
         <span className="flex min-w-0 flex-1 flex-col gap-1">
           <span className="truncate text-sm font-semibold" title={project.title}>
@@ -850,7 +876,7 @@ function ProjectCard({
       </div>
     </div>
   )
-}
+})
 
 // 分组标题 + 一列 label/value 行。value 为空显示 "—"(只读面板留占位比隐藏行更稳定,
 // 不会因为数据缺失而让面板高度乱跳)。
