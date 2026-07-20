@@ -1,7 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { formatDistanceToNow } from 'date-fns'
-import { toast } from 'sonner'
 import {
   Building2,
   ChevronDown,
@@ -16,7 +14,12 @@ import {
   User,
 } from 'lucide-react'
 
-import { changeBffProjectStatus, getBffProject, getBffProjectStats, listBffProjects } from '@/generated/client'
+import {
+  useChangeProjectStatus,
+  useInfiniteProjects,
+  useProject,
+  useProjectStats,
+} from '@/api/projects/projects'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
@@ -48,8 +51,6 @@ type ProjectSummary = {
   thumbnailKind: string | null
   updatedAt: string
 }
-
-const PAGE_SIZE = 20
 
 const STATUS_TABS = [
   { id: '', label: 'All' },
@@ -183,25 +184,8 @@ export function ProjectNav() {
   // name 排序前端做,服务端固定用时间序拉取(created/updated 二选一)
   const serverSort = sort.startsWith('name') ? 'created_desc' : sort
 
-  const projects = useInfiniteQuery({
-    queryKey: ['bff', 'projects', { search, status, sort: serverSort }],
-    queryFn: ({ pageParam }) =>
-      listBffProjects({
-        query: {
-          limit: PAGE_SIZE,
-          offset: pageParam,
-          search: search || undefined,
-          status: status || undefined,
-          sort: serverSort,
-        },
-      }),
-    initialPageParam: 0,
-    getNextPageParam: (last) => {
-      const loaded = last.offset + last.items.length
-      return loaded < last.total ? loaded : undefined
-    },
-  })
-  const stats = useQuery({ queryKey: ['bff', 'projects', 'stats'], queryFn: () => getBffProjectStats({}) })
+  const projects = useInfiniteProjects({ search, status, sort: serverSort })
+  const stats = useProjectStats()
   const rawItems = (projects.data?.pages.flatMap((p) => p.items) ?? []) as ProjectSummary[]
   const items = useMemo(() => {
     if (sort === 'name_asc') return [...rawItems].sort((a, b) => a.title.localeCompare(b.title))
@@ -209,11 +193,7 @@ export function ProjectNav() {
     return rawItems
   }, [rawItems, sort])
 
-  const detail = useQuery({
-    queryKey: ['bff', 'project', selectedId],
-    queryFn: () => getBffProject({ path: { id: selectedId! } }),
-    enabled: Boolean(selectedId),
-  })
+  const detail = useProject(selectedId)
 
   const selectProject = (id: string) => {
     setSelectedId(id)
@@ -225,16 +205,7 @@ export function ProjectNav() {
     void stats.refetch()
   }
 
-  const queryClient = useQueryClient()
-  const changeStatus = useMutation({
-    mutationFn: (vars: { id: string; action: string }) =>
-      changeBffProjectStatus({ path: { id: vars.id }, body: { action: vars.action } }),
-    onSuccess: () => {
-      // 失效 list + stats(前缀匹配)→ 状态与计数刷新
-      void queryClient.invalidateQueries({ queryKey: ['bff', 'projects'] })
-    },
-    onError: (error: Error) => toast.error(error.message || '状态变更失败'),
-  })
+  const changeStatus = useChangeProjectStatus()
 
   return (
     <div className="flex h-full shrink-0 border-r bg-sidebar text-sidebar-foreground">

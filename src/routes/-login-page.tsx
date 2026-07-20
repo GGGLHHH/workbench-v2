@@ -1,11 +1,9 @@
 import { useNavigate, useSearch } from '@tanstack/react-router'
-import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { z } from 'zod'
 
-import { loginBffSession } from '@/generated/client'
+import { useLogin } from '@/api/session/session'
 import { formSubmitHandler, useAppForm } from '@/components/form'
-import { queryKeys } from '@/lib/query-keys'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 
 // `-` 前缀文件不入路由树,仅作 /login 的页面组件(对齐 xchangeai-web 的 -login-page 约定)。
@@ -26,18 +24,14 @@ const loginSchema = z.object({
 export function LoginPage() {
   const navigate = useNavigate()
   const { redirect: redirectTo } = useSearch({ from: '/login' })
-  const queryClient = useQueryClient()
-  const { mutate: login, isPending } = useMutation({
-    mutationFn: (body: LoginFormValues) => loginBffSession({ body }),
-  })
+  // useLogin 已在 onSuccess 里预填会话缓存(守卫立即放行),这里只负责 toast + 跳转。
+  const { mutate: login, isPending } = useLogin()
   const form = useAppForm({
     defaultValues,
     validators: { onChange: loginSchema },
     onSubmit: ({ value }) => {
       login(value, {
-        onSuccess: (session) => {
-          // 预填会话缓存 → 守卫立即看到已登录,避免回跳时再探测一次
-          queryClient.setQueryData(queryKeys.session(), session)
+        onSuccess: () => {
           toast.success('登录成功')
           void navigate({ to: (redirectTo ?? '/') as '/' })
         },
