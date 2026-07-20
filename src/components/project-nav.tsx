@@ -254,8 +254,14 @@ export function ProjectNav() {
 
   // 改筛选用 replace:搜索框每 300ms 防抖发一次,push 会把历史记录塞满。
   // 选项目用 push:后退键回到上一个看的项目(见 AskUserQuestion 里选的那条)。
-  const setFilter = (patch: ProjectSearch) =>
-    void navigate({ search: (prev) => ({ ...prev, ...patch }), replace: true })
+  const setFilter = useCallback(
+    (patch: ProjectSearch) => void navigate({ search: (prev) => ({ ...prev, ...patch }), replace: true }),
+    [navigate],
+  )
+  // 这三个一路传到 memo 化的 ListHeader,必须稳定
+  const onSearch = useCallback((v: string) => setFilter({ search: v || undefined }), [setFilter])
+  const onStatusChange = useCallback((v: string) => setFilter({ status: v || undefined }), [setFilter])
+  const onSortChange = useCallback((v: string) => setFilter({ sort: v }), [setFilter])
 
   // active = 哪一栏(该)展开;collapsed = 两栏同时收起。
   // 收起时刻意不动 active —— 它本身就是「收起前展开的是哪个」的记忆,还原直接读它,
@@ -271,6 +277,8 @@ export function ProjectNav() {
   // 列表数据由 ListContent 自己按可见区间取(虚拟化 → 随机访问),这里只留 stats 供 tab 计数。
   const params2 = useMemo(() => ({ search, status, sort }), [search, status, sort])
   const stats = useProjectStats()
+  const statsRefetch = stats.refetch
+  const refreshStats = useCallback(() => void statsRefetch(), [statsRefetch])
   const detail = useProject(selectedId)
 
   // 点 rail / 选项目 → 展开该栏(顺带解除整体收起)
@@ -326,12 +334,12 @@ export function ProjectNav() {
             statsTotal={stats.data?.total}
             statusCounts={stats.data?.statusCounts ?? {}}
             search={search}
-            onSearch={(value) => setFilter({ search: value || undefined })}
+            onSearch={onSearch}
             status={status}
-            onStatusChange={(value) => setFilter({ status: value || undefined })}
+            onStatusChange={onStatusChange}
             sort={sort}
-            onSortChange={(value) => setFilter({ sort: value })}
-            onRefreshStats={() => void stats.refetch()}
+            onSortChange={onSortChange}
+            onRefreshStats={refreshStats}
             onChangeStatus={changeProjectStatus}
             statusChangingId={changeStatus.isPending ? (changeStatus.variables?.id ?? null) : null}
             selectedId={selectedId}
@@ -483,6 +491,110 @@ function PanelBody({ children }: { children: React.ReactNode }) {
   return <div className="flex h-full w-full flex-col">{children}</div>
 }
 
+// 头部单独 memo:滚动时虚拟化器每帧都让 ListContent 重渲染,而搜索框、11 个状态 tab、
+// 排序下拉这些跟滚动毫无关系 —— 不隔离的话它们每帧都跟着 diff 一遍。
+const ListHeader = memo(function ListHeader({
+  search,
+  onSearch,
+  status,
+  onStatusChange,
+  sort,
+  onSortChange,
+  statusCounts,
+  allCount,
+  syncing,
+  onSync,
+  onToggleCollapse,
+  tabsViewportRef,
+}: {
+  search: string
+  onSearch: (value: string) => void
+  status: string
+  onStatusChange: (value: string) => void
+  sort: string
+  onSortChange: (value: string) => void
+  statusCounts: Record<string, number>
+  allCount: number
+  syncing: boolean
+  onSync: () => void
+  onToggleCollapse: () => void
+  tabsViewportRef: React.RefObject<HTMLDivElement | null>
+}) {
+  return (
+    <>
+      {/* 头部:标题 + 同步 + 搜索 + 状态筛选 tab */}
+      <div className="flex flex-col gap-2 border-b p-2">
+        <div className="flex items-center gap-2 px-1">
+          {/* 与收起态 rail 顶部的 toggle 同一位置(最左),避免来回切时按钮跳位 */}
+          <CollapseToggle collapsed={false} onToggle={onToggleCollapse} />
+          <span className="flex-1 text-sm font-semibold">项目</span>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-7 gap-1 px-2 text-xs"
+            disabled={syncing}
+            onClick={onSync}
+          >
+            {syncing ? <Loader2 className="size-3.5 animate-spin" /> : <CloudDownload className="size-3.5" />} 同步
+          </Button>
+        </div>
+        <SearchInput
+          value={search}
+          onValueChange={onSearch}
+          placeholder="搜索项目…"
+          aria-label="搜索项目"
+          inputClassName="h-8 text-sm"
+        />
+        {/* tab 条本来就有左右渐隐,再加一条横向滚动条只会挤掉半行高度 */}
+        <ScrollArea viewportRef={tabsViewportRef} scrollbar="none" className="w-full">
+          <div className="flex w-max gap-1">
+            {STATUS_TABS.map((tab) => {
+              const count = tab.id ? (statusCounts[tab.id] ?? 0) : allCount
+              const isActive = status === tab.id
+              return (
+                <button
+                  key={tab.id || 'all'}
+                  type="button"
+                  onClick={() => onStatusChange(tab.id)}
+                  className={cn(
+                    'flex shrink-0 items-center gap-1 rounded-md px-2 py-1 text-xs whitespace-nowrap transition-colors',
+                    isActive
+                      ? 'bg-sidebar-accent text-sidebar-accent-foreground'
+                      : 'text-muted-foreground hover:bg-sidebar-accent/50',
+                  )}
+                >
+                  <span>{tab.label}</span>
+                  <span className={cn('tabular-nums', isActive && 'font-semibold')}>{count}</span>
+                </button>
+              )
+            })}
+          </div>
+        </ScrollArea>
+      </div>
+
+      <div className="flex items-center justify-between px-3 py-2 text-xs text-muted-foreground">
+        <span className="font-medium tracking-wide">RECENT PROJECTS</span>
+        <Select items={SORT_OPTIONS} value={sort} onValueChange={(value) => onSortChange(String(value))}>
+          <SelectTrigger
+            size="sm"
+            className="h-6 gap-1 border-0 bg-transparent px-1.5 text-xs text-muted-foreground shadow-none hover:text-foreground focus-visible:ring-0 dark:bg-transparent dark:hover:bg-transparent"
+          >
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent align="end">
+            {SORT_OPTIONS.map((option) => (
+              <SelectItem key={option.value} value={option.value}>
+                {option.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+
+    </>
+  )
+})
+
 function ListContent({
   params,
   statsTotal,
@@ -624,79 +736,28 @@ function ListContent({
     }
   }, [anchorKey, visible, virtualizer, anchor])
 
+  // memo 化的头部要稳定的回调,否则每帧新函数、memo 失效
+  const onSync = useCallback(() => {
+    refetch()
+    onRefreshStats()
+  }, [refetch, onRefreshStats])
+
   return (
     <PanelBody>
-      {/* 头部:标题 + 同步 + 搜索 + 状态筛选 tab */}
-      <div className="flex flex-col gap-2 border-b p-2">
-        <div className="flex items-center gap-2 px-1">
-          {/* 与收起态 rail 顶部的 toggle 同一位置(最左),避免来回切时按钮跳位 */}
-          <CollapseToggle collapsed={false} onToggle={onToggleCollapse} />
-          <span className="flex-1 text-sm font-semibold">项目</span>
-          <Button
-            variant="ghost"
-            size="sm"
-            className="h-7 gap-1 px-2 text-xs"
-            disabled={isFetching}
-            onClick={() => {
-              refetch()
-              onRefreshStats()
-            }}
-          >
-            {isFetching ? <Loader2 className="size-3.5 animate-spin" /> : <CloudDownload className="size-3.5" />} 同步
-          </Button>
-        </div>
-        <SearchInput
-          value={search}
-          onValueChange={onSearch}
-          placeholder="搜索项目…"
-          aria-label="搜索项目"
-          inputClassName="h-8 text-sm"
-        />
-        {/* tab 条本来就有左右渐隐,再加一条横向滚动条只会挤掉半行高度 */}
-        <ScrollArea viewportRef={tabsViewportRef} scrollbar="none" className="w-full">
-          <div className="flex w-max gap-1">
-            {STATUS_TABS.map((tab) => {
-              const count = tab.id ? (statusCounts[tab.id] ?? 0) : (statsTotal ?? total)
-              const isActive = status === tab.id
-              return (
-                <button
-                  key={tab.id || 'all'}
-                  type="button"
-                  onClick={() => onStatusChange(tab.id)}
-                  className={cn(
-                    'flex shrink-0 items-center gap-1 rounded-md px-2 py-1 text-xs whitespace-nowrap transition-colors',
-                    isActive
-                      ? 'bg-sidebar-accent text-sidebar-accent-foreground'
-                      : 'text-muted-foreground hover:bg-sidebar-accent/50',
-                  )}
-                >
-                  <span>{tab.label}</span>
-                  <span className={cn('tabular-nums', isActive && 'font-semibold')}>{count}</span>
-                </button>
-              )
-            })}
-          </div>
-        </ScrollArea>
-      </div>
-
-      <div className="flex items-center justify-between px-3 py-2 text-xs text-muted-foreground">
-        <span className="font-medium tracking-wide">RECENT PROJECTS</span>
-        <Select items={SORT_OPTIONS} value={sort} onValueChange={(value) => onSortChange(String(value))}>
-          <SelectTrigger
-            size="sm"
-            className="h-6 gap-1 border-0 bg-transparent px-1.5 text-xs text-muted-foreground shadow-none hover:text-foreground focus-visible:ring-0 dark:bg-transparent dark:hover:bg-transparent"
-          >
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent align="end">
-            {SORT_OPTIONS.map((option) => (
-              <SelectItem key={option.value} value={option.value}>
-                {option.label}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
+      <ListHeader
+        search={search}
+        onSearch={onSearch}
+        status={status}
+        onStatusChange={onStatusChange}
+        sort={sort}
+        onSortChange={onSortChange}
+        statusCounts={statusCounts}
+        allCount={statsTotal ?? total}
+        syncing={isFetching}
+        onSync={onSync}
+        onToggleCollapse={onToggleCollapse}
+        tabsViewportRef={tabsViewportRef}
+      />
 
       <ScrollArea viewportRef={viewportRef} className="min-h-0 flex-1">
         {isPending ? (
@@ -708,17 +769,19 @@ function ListContent({
         ) : total === 0 ? (
           <div className="p-3 text-sm text-muted-foreground">没有匹配的项目</div>
         ) : (
-          // 撑满整份 total 的高度 —— 滚动条据此忠实反映"在 N 条里的第几条",
-          // 而不是"在已加载的那几条里的第几条"。行绝对定位到各自的 start。
-          <div className="relative p-2" style={{ height: virtualizer.getTotalSize() }}>
+          // 撑满整份 total 的高度 —— 滚动条据此忠实反映"在 N 条里的第几条"。
+          // 位移只写在外层一个节点上(TanStack Virtual 官方推荐):原先每行各写一个
+          // transform,滚动时每帧 20 次样式写入 + 20 次 diff;现在每帧 1 次。
+          // 行在常规流里靠定高 + margin 排布,步长与虚拟化器的 gap 配置一致。
+          <div className="px-2" style={{ height: virtualizer.getTotalSize() }}>
+            <div style={{ transform: `translateY(${virtualItems[0]?.start ?? 0}px)` }}>
             {virtualItems.map((row) => {
               const project = itemAt(row.index)
               return (
                 <div
                   key={row.key}
                   data-index={row.index}
-                  className="absolute inset-x-2 top-0"
-                  style={{ transform: `translateY(${row.start}px)` }}
+                  style={{ height: ROW_HEIGHT, marginBottom: ROW_GAP }}
                 >
                   {project ? (
                     <ProjectCard
@@ -738,6 +801,7 @@ function ListContent({
                 </div>
               )
             })}
+            </div>
           </div>
         )}
       </ScrollArea>

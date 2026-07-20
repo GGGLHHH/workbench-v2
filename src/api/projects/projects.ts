@@ -1,4 +1,4 @@
-import { useRef } from 'react'
+import { useCallback, useRef } from 'react'
 import { keepPreviousData, useMutation, useQueries, useQuery } from '@tanstack/react-query'
 import { toast } from 'sonner'
 
@@ -65,6 +65,12 @@ export function useProjectPages(params: ProjectListParams, pageRange: { start: n
 
   const results = useQueries({ queries: indexes.map((i) => pageQuery(params, i)) })
 
+  // 稳定身份:会一路传到 memo 化的 ListHeader,每帧新建就等于没 memo
+  const refetch = useCallback(
+    () => void queryClient.invalidateQueries({ queryKey: queryKeys.projects.lists() }),
+    [],
+  )
+
   // 页号 → 该页数据。虚拟行按绝对下标取:itemAt(3847) → 第 192 页的第 7 条。
   const pages = new Map<number, BffProjectPage>()
   for (const [i, r] of results.entries()) {
@@ -79,7 +85,7 @@ export function useProjectPages(params: ProjectListParams, pageRange: { start: n
     isPending: boot.isPending,
     isError: boot.isError,
     isFetching: boot.isFetching || results.some((r) => r.isFetching),
-    refetch: () => void queryClient.invalidateQueries({ queryKey: queryKeys.projects.lists() }),
+    refetch,
   }
 }
 
