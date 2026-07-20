@@ -195,8 +195,11 @@ function useScrollFade(ref: React.RefObject<HTMLDivElement | null>, orientation:
     }
     apply()
     el.addEventListener('scroll', apply, { passive: true })
+    // 视口尺寸不随内容变 —— 只观察 el,内容变高(切 view/edit、加载更多)时不会重算,
+    // 遮罩就停在旧状态。连内容容器一起观察才盖得住。
     const ro = new ResizeObserver(apply)
     ro.observe(el)
+    if (el.firstElementChild) ro.observe(el.firstElementChild)
     return () => {
       el.removeEventListener('scroll', apply)
       ro.disconnect()
@@ -987,6 +990,8 @@ function DetailContent({
   const [editing, setEditing] = useState(false)
   const options = useProjectOptions(visible && editing)
   const saveMeta = useSaveProjectMeta()
+  const viewportRef = useRef<HTMLDivElement>(null)
+  useScrollFade(viewportRef, 'vertical') // 详情上下阴影,与列表同一套
   const d = project?.detail
 
   // 换项目时退出编辑态,免得把 A 的草稿套在 B 上
@@ -1013,7 +1018,7 @@ function DetailContent({
           <ChevronLeft className="size-3.5" /> 列表
         </Button>
       </div>
-      <ScrollArea className="min-h-0 flex-1">
+      <ScrollArea viewportRef={viewportRef} className="min-h-0 flex-1">
         <div className="p-3">
           {loading || !project || !d ? (
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
