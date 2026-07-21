@@ -21,6 +21,7 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   Pencil,
+  Plus,
   Share2,
   ThumbsDown,
   ThumbsUp,
@@ -49,6 +50,7 @@ import {
 } from '@/api/projects/projects'
 import { toast } from 'sonner'
 import { editorStore } from '@/editor-app'
+import { addProjectAssetToEditor } from '@/lib/add-to-editor'
 import { AssetViewer } from '@/components/asset-viewer'
 import { useMediaLightbox } from '@/components/media-lightbox'
 import { CommentPane } from '@/components/comment-pane'
@@ -1082,6 +1084,27 @@ function AssetGrid({ projectId, assets }: { projectId: string; assets: NonNullab
   ] as const
   const viewer = useMediaLightbox()
   const saveTags = useSaveAssetTags()
+  const [adding, setAdding] = useState<string | null>(null)
+  // 加入编辑器:探测尺寸 → 建素材 + 时间线条目落到右侧编辑器(见 add-to-editor)
+  const handleAdd = async (a: NonNullable<BffProjectDetail['assets']>[number]) => {
+    setAdding(a.id)
+    try {
+      await addProjectAssetToEditor({
+        id: a.id,
+        url: a.url,
+        kind: a.kind,
+        name: a.name,
+        durationSeconds: a.durationSeconds,
+        // contentId 是 BFF 新增字段,生成类型暂未含 → cast
+        contentId: (a as { contentId?: string | null }).contentId,
+      })
+      toast.success(`已加入编辑器:${a.name || '素材'}`)
+    } catch {
+      toast.error('加入编辑器失败')
+    } finally {
+      setAdding(null)
+    }
+  }
   return (
     <>
       {groups.map(({ key, label }) => {
@@ -1091,27 +1114,42 @@ function AssetGrid({ projectId, assets }: { projectId: string; assets: NonNullab
           <Group key={key} title={`${label} (${list.length})`}>
             <div className="grid grid-cols-4 gap-1.5">
               {list.map((a) => (
-                <button
-                  key={a.id}
-                  type="button"
-                  onClick={(e) => viewer.open(assets.indexOf(a), e)}
-                  title={[a.name, a.tags?.map((t) => t.displayName || t.name).join(', ')].filter(Boolean).join(' · ') || undefined}
-                  className="relative aspect-square overflow-hidden rounded-md ring-offset-background hover:ring-2 hover:ring-ring focus-visible:ring-2 focus-visible:ring-ring"
-                >
-                  {/* 有海报就贴海报 —— 一张图比让 20 个 <video> 各自拉 metadata 便宜得多 */}
-                  <Thumb
-                    url={a.thumbnailUrl || a.url}
-                    kind={a.thumbnailUrl ? 'image' : a.kind}
-                    className="size-full rounded-none"
-                  />
-                  <ReviewBadge admin={a.adminReview ?? null} assignee={a.assigneeReview ?? null} />
-                  {a.commentCount > 0 ? (
-                    <span className="absolute right-0.5 bottom-0.5 inline-flex items-center gap-0.5 rounded bg-black/70 px-1 text-[10px] text-white">
-                      <MessageSquare className="size-2.5" />
-                      {a.commentCount}
-                    </span>
-                  ) : null}
-                </button>
+                <div key={a.id} className="group relative">
+                  <button
+                    type="button"
+                    onClick={(e) => viewer.open(assets.indexOf(a), e)}
+                    title={[a.name, a.tags?.map((t) => t.displayName || t.name).join(', ')].filter(Boolean).join(' · ') || undefined}
+                    className="relative aspect-square w-full overflow-hidden rounded-md ring-offset-background hover:ring-2 hover:ring-ring focus-visible:ring-2 focus-visible:ring-ring"
+                  >
+                    {/* 有海报就贴海报 —— 一张图比让 20 个 <video> 各自拉 metadata 便宜得多 */}
+                    <Thumb
+                      url={a.thumbnailUrl || a.url}
+                      kind={a.thumbnailUrl ? 'image' : a.kind}
+                      className="size-full rounded-none"
+                    />
+                    <ReviewBadge admin={a.adminReview ?? null} assignee={a.assigneeReview ?? null} />
+                    {a.commentCount > 0 ? (
+                      <span className="absolute right-0.5 bottom-0.5 inline-flex items-center gap-0.5 rounded bg-black/70 px-1 text-[10px] text-white">
+                        <MessageSquare className="size-2.5" />
+                        {a.commentCount}
+                      </span>
+                    ) : null}
+                  </button>
+                  {/* hover 显现:加入右侧编辑器(独立按钮,与打开灯箱的瓦片同级,避免嵌套) */}
+                  <button
+                    type="button"
+                    aria-label="加入编辑器"
+                    title="加入编辑器"
+                    disabled={adding === a.id}
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      void handleAdd(a)
+                    }}
+                    className="absolute top-1 left-1 inline-flex size-6 items-center justify-center rounded bg-black/60 text-white opacity-0 shadow transition-opacity group-hover:opacity-100 hover:bg-black/80 focus-visible:opacity-100 disabled:opacity-60"
+                  >
+                    {adding === a.id ? <Loader2 className="size-3.5 animate-spin" /> : <Plus className="size-3.5" />}
+                  </button>
+                </div>
               ))}
             </div>
           </Group>

@@ -182,6 +182,8 @@ const toAssets = (list: any[] | null | undefined, kind: 'creator' | 'agent') =>
     const m = assetMedia(a)
     return {
       id: a.id ?? a.content_id,
+      // content_id:前端据此拼稳定的 /bff/content/<id>(加入编辑器时用,替代会过期的预签名 url)
+      contentId: a.content_id ?? null,
       group: kind,
       url: m?.url ?? '',
       thumbnailUrl: m?.thumbnailUrl ?? null,
@@ -339,6 +341,7 @@ export const registerProjectRoutes = (app: FastifyInstance): void => {
     required: ['id', 'group', 'url', 'kind', 'commentCount'],
     properties: {
       id: { type: 'string' },
+      contentId: nullable('string'), // xchangeai content_id;前端拼 /bff/content/<id> 稳定引用
       group: { type: 'string' }, // creator | agent
       url: { type: 'string' }, // 原件(灯箱/下载);拿不到时为空串
       thumbnailUrl: nullable('string'), // 海报,仅视频有;网格优先用它
@@ -1184,6 +1187,32 @@ export const registerProjectRoutes = (app: FastifyInstance): void => {
       if (!url) return reply.code(404).send({ error: 'content not ready' });
       // 版本无关的重定向写法(避开 reply.redirect 跨版本的参数顺序差异)
       return reply.code(302).header('location', url).send();
+    },
+  );
+
+  // 渲染前解析:服务端渲染器(server/ 的 Remotion headless)加载不了相对的 /bff/content/<id>——
+  // 相对路径会被解析到渲染器自己的 bundle server,且它没有会话 cookie 去 BFF 解析。故在此拦截
+  // /api/render,把 state 里的 /bff/content/<id> 现解析成 xchangeai 绝对预签名 URL(公开、渲染器
+  // 可直取),再转发渲染服务。存储态仍是稳定的 /bff/content(不落过期地址)—— 只在渲染这一刻替换。
+  // 显式路由,优先于 index.ts 里 /api/* 的透明代理;其余 /api/*(blob/progress/captions)仍走代理。
+  app.post<{ Body: { state?: { assets?: Record<string, { url?: unknown }> } } }>(
+    '/api/render',
+    async (req, reply) => {
+      const auth = forwardAuth(req);
+      const body = (req.body ?? {}) as { state?: { assets?: Record<string, { url?: unknown }> } };
+      for (const asset of Object.values(body.state?.assets ?? {})) {
+        const m = typeof asset.url === 'string' ? asset.url.match(/^\/bff\/content\/(.+)$/) : null;
+        if (!m) continue;
+        const details = await getUpload({ path: { content_id: m[1] } }, auth).catch(() => null);
+        const dl = details?.download_url || details?.preview_url;
+        if (dl) asset.url = new URL(dl, `${config.xchangeUpstream}/`).toString(); // 绝对预签名地址
+      }
+      const res = await fetch(`${config.renderUpstream}/api/render`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      return reply.code(res.status).send(await res.json().catch(() => ({})));
     },
   );
 
