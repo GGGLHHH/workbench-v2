@@ -57,6 +57,7 @@ export function CommentTimeline({
     gap: 12,
     anchorTo: 'end', // 反向列表:内容在上方变化时钉住底部,不跳
     followOnAppend: true, // 在底部时追加新评论自动跟到底
+    scrollEndThreshold: 80, // 距底 ≤80px 才算「贴底」—— followOnAppend 的跟随判据,和列表其它处同一档
   })
   const virtualItems = virtualizer.getVirtualItems()
 

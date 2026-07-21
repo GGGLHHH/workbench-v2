@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { differenceInSeconds, format, isThisYear, isToday, isYesterday } from 'date-fns'
 import { Check, File as FileIcon, Loader2, Pencil, Trash2 } from 'lucide-react'
@@ -76,15 +76,23 @@ export function CommentThread({
   const meId = useQueryClient().getQueryData<BffSession>(queryKeys.session())?.user?.id
   const [showEarlier, setShowEarlier] = useState(false)
   const bottomRef = useRef<HTMLDivElement>(null)
+  const didInitScroll = useRef(false)
 
   const items = data?.items ?? []
   const hidden = showEarlier ? 0 : Math.max(0, items.length - INITIAL_VISIBLE)
   const visible = items.slice(hidden)
 
-  // 发完 / 展开早期评论后滚到底。评论是追加流,底部才是"当前位置"。
+  const scrollToBottom = useCallback(() => {
+    requestAnimationFrame(() => bottomRef.current?.scrollIntoView({ block: 'nearest' }))
+  }, [])
+
+  // 首屏落底一次(最新在底)。之后只有「自己发」才落底(见 CommentComposer onPosted)——
+  // 删除、展开更早、后台重取都不该把正在读历史的人拽走(原先无差别挂 items.length 就是拽人)。
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ block: 'nearest' })
-  }, [items.length, showEarlier])
+    if (didInitScroll.current || items.length === 0) return
+    didInitScroll.current = true
+    scrollToBottom()
+  }, [items.length, scrollToBottom])
 
   return (
     <section className={cn('flex flex-col gap-2', className)}>
@@ -141,7 +149,7 @@ export function CommentThread({
         </>
       )}
 
-      {readOnly ? null : <CommentComposer entity={entity} id={id} />}
+      {readOnly ? null : <CommentComposer entity={entity} id={id} onPosted={scrollToBottom} />}
     </section>
   )
 }
