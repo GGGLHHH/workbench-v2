@@ -3,13 +3,17 @@ import * as React from 'react'
 import { useDebounceFn } from 'ahooks'
 import { Search } from 'lucide-react'
 
-import { Input } from '@/components/ui/input'
+import {
+  InputGroup,
+  InputGroupAddon,
+  InputGroupInput,
+} from '@/components/ui/input-group'
 import { useControllableState } from '@/hooks/use-controllable-state'
 import { cn } from '@/lib/utils'
 
 interface SearchInputProps
   extends Omit<
-    React.ComponentProps<typeof Input>,
+    React.ComponentProps<typeof InputGroupInput>,
     'className' | 'defaultValue' | 'onChange' | 'type' | 'value'
   > {
   className?: string
@@ -70,17 +74,19 @@ function SearchInput(allProps: SearchInputProps) {
   )
 
   return (
-    <div className={cn('relative w-full', className)}>
-      <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
-      <Input
+    <InputGroup className={cn('h-9 bg-background', className)}>
+      <InputGroupAddon>
+        <Search />
+      </InputGroupAddon>
+      <InputGroupInput
         {...props}
         type="text"
         value={draftValue}
         placeholder={placeholder}
-        className={cn('h-9 bg-background pr-3 pl-9', inputClassName)}
+        className={inputClassName}
         onChange={handleChange}
       />
-    </div>
+    </InputGroup>
   )
 }
 
