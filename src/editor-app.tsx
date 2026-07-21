@@ -29,7 +29,8 @@ const deps = { transport, storage, notify: sonnerNotify }
 
 // 无选中项目时的占位工程:localStorage 恢复,回退 demo。选中项目后由 EditorApp 重置成该工程。
 const initialState = (browser.loadProject() as UndoableState | null) ?? buildDemoState()
-const editorStore = createEditorStore({ undoable: initialState })
+// 导出:成片交付按钮(project-nav)读 renderingTasks 取渲染产物 URL。单例,无循环依赖。
+export const editorStore = createEditorStore({ undoable: initialState })
 editorStore.setState({ lastSavedState: initialState })
 void restoreLocalUrls(editorStore, deps, initialState)
 const editorRefs = createInstanceRefs()
@@ -58,7 +59,8 @@ export function EditorApp() {
   useEffect(() => {
     if (!state || loadedIdRef.current === id) return
     loadedIdRef.current = id ?? null
-    editorStore.setState({ undoable: state, lastSavedState: state, past: [], future: [], selectedItemIds: [] })
+    // renderingTasks 也清:换项目后旧渲染产物不应被误交付到新项目
+    editorStore.setState({ undoable: state, lastSavedState: state, past: [], future: [], selectedItemIds: [], renderingTasks: [] })
     void restoreLocalUrls(editorStore, deps, state)
     // ponytail: 直接重置会丢弃未保存改动(gotcha #5,脏检查/切换确认待产品拍板后单独接)
   }, [id, state])

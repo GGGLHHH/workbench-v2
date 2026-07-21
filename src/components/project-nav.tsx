@@ -24,6 +24,7 @@ import {
   Share2,
   ThumbsDown,
   ThumbsUp,
+  UploadCloud,
   User,
 } from 'lucide-react'
 
@@ -34,16 +35,20 @@ import type { ProjectSearch } from '@/routes/index'
 import {
   PROJECTS_PAGE_SIZE,
   useChangeProjectStatus,
+  useDeliverProject,
   useProject,
   useProjectAnalytics,
   useProjectOptions,
   useProjectPages,
   useProjectStats,
+  usePublishProject,
   useSaveAssetTags,
   useSaveProjectAssignee,
   useSaveProjectMeta,
   useSaveProjectVisibility,
 } from '@/api/projects/projects'
+import { toast } from 'sonner'
+import { editorStore } from '@/editor-app'
 import { AssetViewer } from '@/components/asset-viewer'
 import { useMediaLightbox } from '@/components/media-lightbox'
 import { CommentPane } from '@/components/comment-pane'
@@ -1330,6 +1335,8 @@ function DetailContent({
   const saveMeta = useSaveProjectMeta()
   const saveVisibility = useSaveProjectVisibility()
   const saveAssignee = useSaveProjectAssignee()
+  const publish = usePublishProject()
+  const deliver = useDeliverProject()
   const viewportRef = useRef<HTMLDivElement>(null)
   useScrollFade(viewportRef, 'vertical') // 详情上下阴影,与列表同一套
   const d = project?.detail
@@ -1419,18 +1426,60 @@ function DetailContent({
         <Info className="size-4" />
         <span className="flex-1 truncate text-sm font-medium">详情</span>
         {d && !editing ? (
-          <Button
-            variant="ghost"
-            size="sm"
-            className="h-7 gap-1 px-2 text-xs"
-            onClick={() => {
-              setDraft(detailToDraft(d))
-              setEditing(true)
-              emblaApi?.scrollTo(0) // 编辑表单在「详情」slide,正停在评论页则滑回去
-            }}
-          >
-            <Pencil className="size-3.5" /> 编辑
-          </Button>
+          <>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-7 gap-1 px-2 text-xs"
+              disabled={!id || publish.isPending}
+              // 发布:把本地 server 的素材上传平台 + 改写引用 + 推时间线(读已存态,故先保存)
+              onClick={() => id && publish.mutate({ id })}
+            >
+              {publish.isPending ? (
+                <Loader2 className="size-3.5 animate-spin" />
+              ) : (
+                <UploadCloud className="size-3.5" />
+              )}{' '}
+              发布
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-7 gap-1 px-2 text-xs"
+              disabled={!id || deliver.isPending}
+              // 交付:取编辑器最新渲染产物 URL → BFF 上传绑 creator-asset(须先在编辑器渲染导出)
+              onClick={() => {
+                if (!id) return
+                const done = [...editorStore.getState().renderingTasks]
+                  .reverse()
+                  .find((t) => t.status === 'done' && t.url)
+                if (!done?.url) {
+                  toast.error('请先在编辑器渲染导出成片')
+                  return
+                }
+                deliver.mutate({ id, videoUrl: done.url })
+              }}
+            >
+              {deliver.isPending ? (
+                <Loader2 className="size-3.5 animate-spin" />
+              ) : (
+                <Clapperboard className="size-3.5" />
+              )}{' '}
+              交付
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-7 gap-1 px-2 text-xs"
+              onClick={() => {
+                setDraft(detailToDraft(d))
+                setEditing(true)
+                emblaApi?.scrollTo(0) // 编辑表单在「详情」slide,正停在评论页则滑回去
+              }}
+            >
+              <Pencil className="size-3.5" /> 编辑
+            </Button>
+          </>
         ) : null}
         <Button variant="ghost" size="sm" className="h-7 gap-1 px-2 text-xs" onClick={onBack}>
           <ChevronLeft className="size-3.5" /> 列表

@@ -40,7 +40,7 @@ import {
   saveBffProjectMeta,
   saveBffProjectVisibility,
 } from '@/generated/client'
-import { ApiError } from '@/lib/api-client'
+import { ApiError, requestJson } from '@/lib/api-client'
 import { queryClient } from '@/lib/query-client'
 import { queryKeys, type ProjectListParams } from '@/lib/query-keys'
 
@@ -501,6 +501,38 @@ export function useSaveProject() {
     onSuccess: (_data, { id }) => {
       void queryClient.invalidateQueries({ queryKey: queryKeys.projects.detail(id) })
     },
+  })
+}
+
+// 发布到平台:把已存时间线里指向本地 server 的素材上传 xchangeai + 改写引用 + 回存时间线。
+// 端点新增、生成 client 未含,直接走 requestJson 打 /bff/*(同源代理)。发布前先保存(读的是已存态)。
+export function usePublishProject() {
+  return useMutation({
+    mutationFn: ({ id }: { id: string }) =>
+      requestJson<{ id: string; uploaded: number; skipped: number }>(`/bff/projects/${id}/publish`, {
+        method: 'POST',
+      }),
+    onSuccess: (data, { id }) => {
+      toast.success(`已发布到平台:上传 ${data.uploaded} 个素材${data.skipped ? `,跳过 ${data.skipped} 个` : ''}`)
+      void queryClient.invalidateQueries({ queryKey: queryKeys.projects.detail(id) })
+    },
+    onError: () => toast.error('发布失败'),
+  })
+}
+
+// 成片交付:把编辑器渲染产物(server/ 的 render URL)上传平台绑为 creator-asset。
+export function useDeliverProject() {
+  return useMutation({
+    mutationFn: ({ id, videoUrl }: { id: string; videoUrl: string }) =>
+      requestJson<{ id: string; contentId: string }>(`/bff/projects/${id}/deliver`, {
+        method: 'POST',
+        json: { videoUrl },
+      }),
+    onSuccess: (_data, { id }) => {
+      toast.success('成片已交付到平台')
+      void queryClient.invalidateQueries({ queryKey: queryKeys.projects.detail(id) })
+    },
+    onError: () => toast.error('交付失败'),
   })
 }
 

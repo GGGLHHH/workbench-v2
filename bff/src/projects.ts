@@ -20,6 +20,7 @@ import {
   getProjectAnalyticsMetrics,
   getProjectStatistics,
   getProjectWorkbenchTimeline,
+  getUpload,
   listAgencyOptions,
   listProjectAssetsComments,
   listProjectComments,
@@ -31,6 +32,7 @@ import {
   reassignProject,
   rejectProject,
   replaceProjectAssetTags,
+  replaceProjectCreatorAssets,
   resubmitProject,
   revertProject,
   startProjectReview,
@@ -44,7 +46,7 @@ import {
 } from './generated/client';
 import { config } from './config';
 import { mediaKind, type MediaKind } from './media';
-import { forwardAuth } from './xchange-client';
+import { forwardAuth, putBytes } from './xchange-client';
 
 // FSM 状态动作 → xchangeai 端点。start_work 为复合:created/prepared 先认领(assign)
 // 再 startWork(xchangeai 只接受 assigned→in_progress);其余均为单次调用。
@@ -1090,6 +1092,138 @@ export const registerProjectRoutes = (app: FastifyInstance): void => {
         forwardAuth(req),
       );
       return { id, updatedAt: new Date().toISOString() };
+    },
+  );
+
+  // 发布到平台(方案 A 暂存模型的后半段):把 timeline 里还指向本地渲染服务(server/)的素材
+  // 上传到 xchangeai(createUpload → PUT upload_url → complete),再把 asset.url 改写成平台内容
+  // 引用并回存 workbench 时间线。幂等:已是平台引用的素材跳过 —— 二次发布只补新增/改动的素材。
+  // 读的是已存时间线(不收 body),故发布前请先保存(Cmd+S)。素材字节由 BFF 从 server/ 直取转传,
+  // 不经浏览器。渲染成片的交付(creator-assets)是单独一步,此处只搬源片 + 推时间线。
+  app.post<{ Params: { id: string } }>(
+    '/bff/projects/:id/publish',
+    { schema: { operationId: 'publishBffProject', tags: ['bff'], params: idParams } },
+    async (req, reply) => {
+      const { id } = req.params;
+      const auth = forwardAuth(req);
+      const timeline = await getProjectWorkbenchTimeline({ path: { id } }, auth).catch(() => null);
+      if (!isUndoable(timeline)) return reply.code(409).send({ error: 'no timeline to publish' });
+
+      const state = timeline as unknown as { assets?: Record<string, Record<string, unknown>> };
+      // 只搬还指向本地 server 的素材(renderUpstream 前缀或 localhost);已是平台引用的跳过。
+      const isLocal = (u: unknown): u is string =>
+        typeof u === 'string' &&
+        (u.startsWith(config.renderUpstream) || /^https?:\/\/(localhost|127\.0\.0\.1)/.test(u));
+
+      let uploaded = 0;
+      let skipped = 0;
+      for (const asset of Object.values(state.assets ?? {})) {
+        if (!isLocal(asset.url)) {
+          skipped++;
+          continue;
+        }
+        // 1) 从 server/ 取字节 + 真实 content-type
+        const res = await fetch(asset.url);
+        if (!res.ok) return reply.code(502).send({ error: `fetch asset failed: ${res.status}` });
+        const contentType = res.headers.get('content-type') || 'application/octet-stream';
+        const bytes = new Uint8Array(await res.arrayBuffer());
+        // 2) 建上传槽 → 3) PUT 字节 → 4) 完成
+        const up = await createUpload(
+          {
+            body: {
+              file_name: typeof asset.filename === 'string' ? asset.filename : 'asset',
+              content_type: contentType,
+              file_size: bytes.byteLength,
+              document_type: asset.type === 'video' ? 'video' : 'file',
+              owner_type: 'user',
+            },
+          },
+          auth,
+        );
+        await putBytes(up.upload_url, bytes, contentType, auth);
+        await completeUpload({ path: { content_id: up.content_id } }, auth);
+        // 5) 改写引用:指向 BFF 内容解析端点(同源相对 URL,浏览器经代理带 cookie 加载,与网格同链)。
+        // 存 contentId 而非 download_url —— 加载时现解析,不受"刚上传完 download_url 未就绪"影响,
+        // 也不在 timeline 里落可能过期/跨域的地址。
+        asset.url = `/bff/content/${up.content_id}`;
+        asset.xchangeaiContentId = up.content_id;
+        uploaded++;
+      }
+
+      // 6) 回存改写后的时间线(平台侧从此引用平台内容,不再是 localhost 死链)
+      await upsertProjectWorkbenchTimeline(
+        { path: { id }, body: state as unknown as Record<string, unknown> },
+        auth,
+      );
+      return { id, uploaded, skipped };
+    },
+  );
+
+  // 内容解析:把发布后 timeline 里的 /bff/content/:id 现解析成 xchangeai 当前 download_url 并 302。
+  // 同源 + 透传 cookie → 浏览器经 vite/BFF 代理鉴权加载(与项目网格/灯箱取 content 同一条链)。
+  // 每次加载现解析 → 不受上传刚完成时未就绪影响,也不在 timeline 里存易过期地址。
+  app.get<{ Params: { contentId: string } }>(
+    '/bff/content/:contentId',
+    {
+      schema: {
+        operationId: 'getBffContent',
+        tags: ['bff'],
+        params: {
+          type: 'object',
+          required: ['contentId'],
+          properties: { contentId: { type: 'string' } },
+        },
+      },
+    },
+    async (req, reply) => {
+      const details = await getUpload(
+        { path: { content_id: req.params.contentId } },
+        forwardAuth(req),
+      ).catch(() => null);
+      const url = details?.download_url || details?.preview_url;
+      if (!url) return reply.code(404).send({ error: 'content not ready' });
+      // 版本无关的重定向写法(避开 reply.redirect 跨版本的参数顺序差异)
+      return reply.code(302).header('location', url).send();
+    },
+  );
+
+  // 成片交付:把编辑器渲染出的成片(server/ 的本地 render URL)上传平台并绑为 creator-asset。
+  // 与发布同款上传三步,末尾换 replaceProjectCreatorAssets。videoUrl 由前端从渲染任务取(须先渲染导出)。
+  // 字节同样由 BFF 从 server/ 直取转传,不经浏览器。
+  app.post<{ Params: { id: string }; Body: { videoUrl?: string } }>(
+    '/bff/projects/:id/deliver',
+    { schema: { operationId: 'deliverBffProject', tags: ['bff'], params: idParams } },
+    async (req, reply) => {
+      const { id } = req.params;
+      const videoUrl = req.body?.videoUrl;
+      if (!videoUrl) return reply.code(400).send({ error: 'videoUrl required' });
+      const auth = forwardAuth(req);
+
+      const res = await fetch(videoUrl);
+      if (!res.ok) return reply.code(502).send({ error: `fetch render failed: ${res.status}` });
+      const contentType = res.headers.get('content-type') || 'video/mp4';
+      const bytes = new Uint8Array(await res.arrayBuffer());
+
+      const up = await createUpload(
+        {
+          body: {
+            file_name: `delivery-${id}.mp4`,
+            content_type: contentType,
+            file_size: bytes.byteLength,
+            document_type: 'video',
+            owner_type: 'user',
+          },
+        },
+        auth,
+      );
+      await putBytes(up.upload_url, bytes, contentType, auth);
+      await completeUpload({ path: { content_id: up.content_id } }, auth);
+      // 绑为创建者交付物(整体替换 —— 与 listingcut 的 replaceCreatorAssets 同义)
+      await replaceProjectCreatorAssets(
+        { path: { id }, body: { creator_assets: [up.content_id] } },
+        auth,
+      );
+      return { id, contentId: up.content_id };
     },
   );
 };

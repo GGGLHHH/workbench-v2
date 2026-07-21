@@ -26,6 +26,21 @@ export function forwardAuth(req: { headers: { cookie?: string } }): { headers: R
   return { headers: req.headers.cookie ? { cookie: req.headers.cookie } : {} };
 }
 
+// 发布素材用:把字节 PUT 到 createUpload 返回的 upload_url(相对 xchangeai 根解析,透传会话 cookie)。
+// 独立的长超时 raw PUT —— 视频可达几十 MB;upload_url 是服务端下发的地址,不落在 generated
+// client 的固定 operation 覆盖里,故不走 requestJson/Void,直接 new URL 解析后 PUT。
+const uploadApi = ky.create({ timeout: 600_000, retry: { limit: 0 } });
+
+export async function putBytes(
+  uploadUrl: string,
+  body: Uint8Array,
+  contentType: string,
+  auth: { headers: Record<string, string> },
+): Promise<void> {
+  const url = new URL(uploadUrl, `${config.xchangeUpstream}/`).toString();
+  await uploadApi.put(url, { body, headers: { 'content-type': contentType, ...auth.headers } });
+}
+
 /**
  * 登录:原始 POST /auth/login(无需既有会话),返回 xchangeai 下发的 Set-Cookie 串数组。
  * 调用方负责把它回传浏览器(建立会话)并用其中的 access_token 立即取用户。
