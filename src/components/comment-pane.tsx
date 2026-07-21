@@ -6,12 +6,13 @@ import { Loader2 } from 'lucide-react'
 import type { BffSession } from '@/generated/api-types'
 import { useInfiniteComments } from '@/api/projects/projects'
 import { CommentComposer } from '@/components/comment-composer'
-import { CommentItem, DaySeparator, toCommentRows } from '@/components/comment-thread'
+import { CommentItem, DaySeparator, toCommentRows } from '@/components/comment-item'
 import { queryKeys } from '@/lib/query-keys'
 import { useScrollFade } from '@/lib/use-scroll-fade'
 import { ScrollArea } from '@/components/ui/scroll-area'
 
-// 资产评论时间线(灯箱右栏)。聊天流:时间正序、最新在底、开时滚到底,上拉取更旧的一页。
+// 评论 pane(公共底层)。资产灯箱右栏、项目详情「评论」Tab 都挂它 —— 一块自持滚动容器的聊天流:
+// 反向无限(上拉取更旧)、时间正序、最新在底、开时滚到底。叶子(CommentItem / 分隔)见 comment-item。
 //
 // 评论是动态高度(长短不一、带附件),所以用 TanStack Virtual 的 dynamic 测量(measureElement),
 // 不是 project list 那种定高。反向 prepend 的位置保持交给库原生的两个选项(3.14 的聊天 API):
@@ -20,7 +21,7 @@ import { ScrollArea } from '@/components/ui/scroll-area'
 //   - getItemKey 稳定键 —— prepend 后索引整体后移,测量仍绑在同一条上,不错位。
 // 贴底用外层 flex justify-end:内容不足时把定高的 sizer 推到底(此时无滚动,不与虚拟坐标冲突);
 // 内容超屏时归 0,sizer 贴顶,正常虚拟滚动。
-export function CommentTimeline({
+export function CommentPane({
   entity,
   id,
   total,

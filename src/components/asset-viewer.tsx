@@ -1,5 +1,5 @@
 import type { BffTag } from '@/generated/api-types'
-import { CommentTimeline } from '@/components/comment-timeline'
+import { CommentPane } from '@/components/comment-pane'
 import { MediaLightbox, type ViewerItem } from '@/components/media-lightbox'
 import { TagInfiniteSelect } from '@/components/tag-infinite-select'
 import {
@@ -53,7 +53,7 @@ export function AssetViewer({
       }
       sidebar={
         asset.id ? (
-          <CommentTimeline
+          <CommentPane
             entity="asset"
             id={asset.id}
             total={asset.commentCount ?? 0}

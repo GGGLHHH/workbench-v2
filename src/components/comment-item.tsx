@@ -1,24 +1,21 @@
-import { useCallback, useLayoutEffect, useRef, useState } from 'react'
-import { useQueryClient } from '@tanstack/react-query'
+import { useLayoutEffect, useRef, useState } from 'react'
 import { differenceInSeconds, format, isThisYear, isToday, isYesterday } from 'date-fns'
-import { Check, File as FileIcon, Loader2, Pencil, Trash2 } from 'lucide-react'
+import { Check, File as FileIcon, Pencil, Trash2 } from 'lucide-react'
 
-import type { BffComment, BffSession } from '@/generated/api-types'
-import { useComments, useDeleteComment, useEditComment } from '@/api/projects/projects'
-import { CommentComposer } from '@/components/comment-composer'
+import type { BffComment } from '@/generated/api-types'
+import { useDeleteComment, useEditComment } from '@/api/projects/projects'
 import { Bubble, BubbleContent } from '@/components/ui/bubble'
 import { MediaLightbox, useMediaLightbox } from '@/components/media-lightbox'
-import { queryKeys } from '@/lib/query-keys'
 import { cn, fileSize } from '@/lib/utils'
 import { Textarea } from '@/components/ui/textarea'
 
-// 项目详情面板的评论线程(窄栏、单页、紧凑)。时间正序、最新在底,长评论 / 早期评论各自折叠 ——
-// 24rem 宽,不折叠会被一条长评论撑爆。资产评论走另一套(Message Scroller 时间线,见 comment-timeline)。
+// 评论的共享叶子:一条评论 CommentItem(list/chat 两种变体,自持编辑/删除 mutation)、日期分隔
+// DaySeparator、以及把评论流拆成「日期分隔 + 评论」行的 toCommentRows / dayLabel。
+// 容器(滚动 / 虚拟化 / 无限加载 / composer)见 comment-pane —— 项目详情与资产灯箱都挂那个 pane。
 //
 // 刻意不做的只有一件:未读/红点。legacy 两边都没有,CommentModel 上也没有 read_at 之类的字段 ——
 // commentCount 是累计量不是未读量,做成红点是凭空发明一个后端撑不起来的语义。
 
-const INITIAL_VISIBLE = 4
 const LONG_COMMENT_CHARS = 280
 const MAX_LENGTH = 5000
 
@@ -56,94 +53,6 @@ export function DaySeparator({ label }: { label: string }) {
     <div className="flex justify-center py-0.5">
       <span className="rounded-full bg-muted/70 px-2.5 py-0.5 text-[10px] text-muted-foreground">{label}</span>
     </div>
-  )
-}
-
-export function CommentThread({
-  entity,
-  id,
-  enabled = true,
-  readOnly = false,
-  className,
-}: {
-  entity: 'project' | 'asset'
-  id: string | null
-  enabled?: boolean
-  readOnly?: boolean
-  className?: string
-}) {
-  const { data, isPending, isError } = useComments(entity, id, enabled)
-  const meId = useQueryClient().getQueryData<BffSession>(queryKeys.session())?.user?.id
-  const [showEarlier, setShowEarlier] = useState(false)
-  const bottomRef = useRef<HTMLDivElement>(null)
-
-  const items = data?.items ?? []
-  const hidden = showEarlier ? 0 : Math.max(0, items.length - INITIAL_VISIBLE)
-  const visible = items.slice(hidden)
-
-  // 只在「自己发评论」后滚到底(见 CommentComposer onPosted)。不做首屏落底 —— 这个 thread 没有自己的
-  // 滚动容器,滚的是整个详情面板;开屏落底会把面板从顶部一路拽到评论区(表现就是刷新后跳到中间)。
-  const scrollToBottom = useCallback(() => {
-    requestAnimationFrame(() => bottomRef.current?.scrollIntoView({ block: 'nearest' }))
-  }, [])
-
-  return (
-    <section className={cn('flex flex-col gap-2', className)}>
-      <h3 className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
-        Comments{items.length ? ` (${data?.total ?? items.length})` : ''}
-      </h3>
-
-      {isPending ? (
-        <div className="flex items-center gap-2 py-2 text-xs text-muted-foreground">
-          <Loader2 className="size-3.5 animate-spin" /> 加载评论…
-        </div>
-      ) : isError ? (
-        <p className="py-2 text-xs text-destructive">评论加载失败</p>
-      ) : (
-        <>
-          {hidden > 0 ? (
-            <button
-              type="button"
-              onClick={() => setShowEarlier(true)}
-              className="self-start text-xs text-primary hover:underline"
-            >
-              还有 {hidden} 条更早的评论
-            </button>
-          ) : items.length > INITIAL_VISIBLE ? (
-            <button
-              type="button"
-              onClick={() => setShowEarlier(false)}
-              className="self-start text-xs text-primary hover:underline"
-            >
-              收起更早的评论
-            </button>
-          ) : null}
-
-          {visible.length ? (
-            <ul className="flex flex-col gap-3">
-              {toCommentRows(visible).map((row) =>
-                row.type === 'sep' ? (
-                  <DaySeparator key={row.key} label={row.label} />
-                ) : (
-                  <CommentItem
-                    key={row.key}
-                    entity={entity}
-                    id={id}
-                    comment={row.comment}
-                    mine={!readOnly && Boolean(meId) && row.comment.authorId === meId}
-                  />
-                ),
-              )}
-            </ul>
-          ) : readOnly ? (
-            <p className="py-2 text-xs text-muted-foreground">暂无评论</p>
-          ) : null}
-          <div ref={bottomRef} />
-        </>
-      )}
-
-      {readOnly ? null : <CommentComposer entity={entity} id={id} onPosted={scrollToBottom} />}
-    </section>
   )
 }
 

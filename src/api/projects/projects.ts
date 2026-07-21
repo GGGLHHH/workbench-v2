@@ -172,19 +172,7 @@ export function useSaveProjectMeta() {
 // enabled:详情面板折叠时不拉;资产评论只在预览弹窗打开时拉。
 type CommentEntity = 'project' | 'asset'
 
-// 单页(项目面板:窄栏、紧凑,一次拉够即可)。limit 100 与改分页前一致,不回归。
-export function useComments(entity: CommentEntity, id: string | null, enabled = true) {
-  return useQuery({
-    enabled: Boolean(id) && enabled,
-    queryKey: queryKeys.projects.comments(entity, id ?? ''),
-    queryFn: () =>
-      entity === 'project'
-        ? listBffProjectComments({ path: { id: id! }, query: { limit: 100 } })
-        : listBffAssetComments({ path: { id: id! }, query: { limit: 100 } }),
-  })
-}
-
-// 无限向后分页(资产灯箱:Message Scroller 聊天流,上拉取更旧的一页)。
+// 无限向后分页(评论 pane:项目详情「评论」Tab 与资产灯箱共用,上拉取更旧的一页)。
 // 上游按时间正序(offset 0 = 最旧),所以「尾页」= 最新那 20 条 → 起始 offset = total-20。
 // total 直接用已知的 asset.commentCount(详情早已加载),不额外请求。fetchPreviousPage 取更旧。
 // 缓存键与单页版同一个(comments(entity,id))—— 但资产评论只走这条路,项目只走单页,不撞。
