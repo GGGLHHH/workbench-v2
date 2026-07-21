@@ -28,3 +28,15 @@ body {
   from { transform: none; opacity: 1; }
   to { transform: var(--flip, scale(0.92)); opacity: 0; }
 }
+
+/* 主题切换圆形揭示(配合 lib/theme-transition.ts 的 View Transition):切换时给 <html> 加
+   .theme-transitioning。关掉 root 快照的默认交叉淡入、新主题层置顶,只保留 JS 里 clip-path 的
+   圆形扩散。scope 在 .theme-transitioning 下 → 不影响其它可能的视图过渡。 */
+.theme-transitioning::view-transition-old(root),
+.theme-transitioning::view-transition-new(root) {
+  animation: none;
+  mix-blend-mode: normal;
+}
+.theme-transitioning::view-transition-new(root) {
+  z-index: 9999;
+}

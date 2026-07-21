@@ -8,7 +8,8 @@ const projectsRoot = ['bff', 'projects'] as const
 
 export interface ProjectListParams {
   search: string
-  status: string
+  // 负责人筛选(替代原状态过滤):'' 全部 | 'unassigned' 未指派 | <userId> 指派给该用户
+  assignee: string
   sort: string
 }
 
@@ -23,6 +24,9 @@ export const queryKeys = {
     page: (params: ProjectListParams, index: number) =>
       [...projectsRoot, 'list', params, index] as const,
     stats: () => [...projectsRoot, 'stats'] as const,
+    // 负责人筛选计数(All 复用 stats.total;Unassigned/My 各发一个 limit:1 列表读 total)。
+    // 挂在 stats 前缀下 → 状态/指派变更 invalidate stats 时随之失效,零额外接线。
+    assigneeCount: (assignee: string) => [...projectsRoot, 'stats', 'assignee', assignee] as const,
     detail: (id: string) => [...projectsRoot, 'detail', id] as const,
     // 表单下拉候选:全局一份,不随项目变 → 平级于 list/detail
     options: () => [...projectsRoot, 'options'] as const,

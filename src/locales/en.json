@@ -243,6 +243,15 @@
     "publish": "Publish",
     "publishAssetsTitle": "Publish assets to platform"
   },
+  "language": {
+    "changeLanguage": "Change language"
+  },
+  "theme": {
+    "changeTheme": "Change theme",
+    "light": "Light",
+    "dark": "Dark",
+    "system": "System"
+  },
   "lightbox": {
     "close": "Close",
     "download": "Download",
@@ -276,6 +285,9 @@
     "details": "Details",
     "expandPanel": "Expand {{label}}",
     "expandSidebar": "Expand sidebar",
+    "filterAll": "All",
+    "filterMine": "My projects",
+    "filterUnassigned": "Unassigned",
     "list": "List",
     "noMatchingProjects": "No matching projects",
     "projects": "Projects",

@@ -8,7 +8,8 @@ import { SORT_VALUES } from '@/components/project-nav'
 export interface ProjectSearch {
   project?: string
   search?: string
-  status?: string
+  // 负责人筛选:'unassigned' | 'me'(查询时 'me' 解析成当前会话 user.id)
+  assignee?: string
   sort?: string
 }
 
@@ -19,7 +20,7 @@ export const Route = createFileRoute('/')({
   validateSearch: (raw: Record<string, unknown>): ProjectSearch => ({
     project: str(raw.project),
     search: str(raw.search),
-    status: str(raw.status),
+    assignee: str(raw.assignee),
     // 排序只认白名单:URL 是用户可改的,脏值会让 Select 显示空白
     sort: SORT_VALUES.includes(String(raw.sort)) ? String(raw.sort) : undefined,
   }),

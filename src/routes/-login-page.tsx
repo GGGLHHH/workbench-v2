@@ -7,6 +7,7 @@ import { useLogin } from '@/api/session/session'
 import { formSubmitHandler, useAppForm } from '@/components/form'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { LanguageToggle } from '@/components/language-toggle'
+import { ThemeToggle } from '@/components/theme-toggle'
 
 // `-` 前缀文件不入路由树,仅作 /login 的页面组件(对齐 xchangeai-web 的 -login-page 约定)。
 
@@ -46,7 +47,8 @@ export function LoginPage() {
 
   return (
     <div className="relative flex min-h-svh items-center justify-center bg-background px-4 py-12">
-      <div className="absolute right-4 top-4">
+      <div className="absolute right-4 top-4 flex items-center gap-1">
+        <ThemeToggle />
         <LanguageToggle />
       </div>
       <Card className="w-full max-w-sm">

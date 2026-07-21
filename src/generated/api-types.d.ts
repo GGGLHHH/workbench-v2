@@ -644,6 +644,8 @@ export interface operations {
                 search?: string;
                 status?: string;
                 sort?: string;
+                /** 手加:BFF /bff/projects 已支持('' 全部 | 'unassigned' | <userId>);下次 vg 重生成会自动带上 */
+                assignee?: string;
             };
             header?: never;
             path?: never;

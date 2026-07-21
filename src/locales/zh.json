@@ -243,6 +243,15 @@
     "publish": "发布",
     "publishAssetsTitle": "发布素材到平台"
   },
+  "language": {
+    "changeLanguage": "切换语言"
+  },
+  "theme": {
+    "changeTheme": "切换主题",
+    "light": "浅色",
+    "dark": "深色",
+    "system": "跟随系统"
+  },
   "lightbox": {
     "close": "关闭",
     "download": "下载",
@@ -276,6 +285,9 @@
     "details": "详情",
     "expandPanel": "展开{{label}}",
     "expandSidebar": "展开侧边栏",
+    "filterAll": "全部",
+    "filterMine": "我的项目",
+    "filterUnassigned": "未指派",
     "list": "列表",
     "noMatchingProjects": "没有匹配的项目",
     "projects": "项目",

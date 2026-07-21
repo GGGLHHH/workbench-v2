@@ -58,7 +58,7 @@ const pageQuery = (params: ProjectListParams, index: number) => ({
         limit: PROJECTS_PAGE_SIZE,
         offset: index * PROJECTS_PAGE_SIZE,
         search: params.search || undefined,
-        status: params.status || undefined,
+        assignee: params.assignee || undefined,
         sort: params.sort,
       },
     }),
@@ -118,6 +118,18 @@ export function useProjectStats() {
   return useQuery({
     queryKey: queryKeys.projects.stats(),
     queryFn: () => getBffProjectStats({}),
+  })
+}
+
+// 负责人筛选的计数。All 用 stats.total;Unassigned('unassigned')/My(当前用户 id)各发一个
+// limit:1 的列表读 total(全局计数,不跟随搜索框——与状态计数一致)。key 挂在 stats 前缀下,
+// 随 stats 一起失效(状态/指派变更时)。assignee 为空则不查(如 me 但会话未就绪)。
+export function useAssigneeCount(assignee: string, enabled: boolean) {
+  return useQuery({
+    enabled: enabled && Boolean(assignee),
+    queryKey: queryKeys.projects.assigneeCount(assignee),
+    queryFn: () => listBffProjects({ query: { limit: 1, assignee } }),
+    select: (page) => page.total,
   })
 }
 
@@ -429,6 +441,8 @@ export function useSaveProjectAssignee() {
       )
       // 列表卡片也显示 assignee → 标记过期,下次 mount 再同步(不立刻重拉,免得缩略图闪)
       void queryClient.invalidateQueries({ queryKey: queryKeys.projects.lists(), refetchType: 'none' })
+      // 指派变了 → 未指派/我的 计数随之变(计数 key 挂在 stats 前缀下,一并失效)
+      void queryClient.invalidateQueries({ queryKey: queryKeys.projects.stats() })
     },
     onError: (error) => {
       toast.error(error instanceof Error && error.message ? error.message : t('projects.assignFailed'))

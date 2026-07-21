@@ -614,7 +614,7 @@ export const registerProjectRoutes = (app: FastifyInstance): void => {
 
   // 列表（分页 + 搜索 + 状态过滤,供前端下拉加载）：xchangeai 项目 → 富摘要。
   // dev:无过滤的首页全空时播一个,保证编辑器有目标可存取。
-  app.get<{ Querystring: { limit?: number; offset?: number; search?: string; status?: string; sort?: string } }>(
+  app.get<{ Querystring: { limit?: number; offset?: number; search?: string; status?: string; sort?: string; assignee?: string } }>(
     '/bff/projects',
     {
       schema: {
@@ -628,6 +628,8 @@ export const registerProjectRoutes = (app: FastifyInstance): void => {
             search: { type: 'string' },
             status: { type: 'string' },
             sort: { type: 'string' },
+            // 负责人过滤:'' 全部 | 'unassigned' 未指派(可认领) | <userId> 指派给该用户
+            assignee: { type: 'string' },
           },
         },
         response: { 200: { $ref: 'BffProjectPage#' } },
@@ -643,8 +645,13 @@ export const registerProjectRoutes = (app: FastifyInstance): void => {
       const query: any = { limit, offset, sort_by: sortBy, sort_at: sortAt };
       if (req.query.search) query.search = req.query.search;
       if (req.query.status) query.status = [req.query.status]; // xchangeai status 是数组
+      // 负责人过滤:'unassigned' → claimable(可认领);具体 userId → assignee_id。
+      // ponytail: 上游只有 claimable / assignee_id[],没有「assignee IS NULL」的精确过滤;
+      // claimable ≈ 未指派可认领,够用。若要严格 IS NULL 得改上游 list-projects。
+      if (req.query.assignee === 'unassigned') query.claimable = true;
+      else if (req.query.assignee) query.assignee_id = [req.query.assignee];
       let page = await listProjects({ query }, auth);
-      if (offset === 0 && !req.query.search && !req.query.status && (page.total ?? 0) === 0) {
+      if (offset === 0 && !req.query.search && !req.query.status && !req.query.assignee && (page.total ?? 0) === 0) {
         await createProject({ body: { price: 0, address: 'Dev Project' } }, auth);
         page = await listProjects({ query }, auth);
       }

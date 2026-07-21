@@ -35,6 +35,7 @@ import type { ProjectSearch } from '@/routes/index'
 
 import {
   PROJECTS_PAGE_SIZE,
+  useAssigneeCount,
   useChangeProjectStatus,
   useProject,
   useProjectAnalytics,
@@ -46,10 +47,12 @@ import {
   useSaveProjectMeta,
   useSaveProjectVisibility,
 } from '@/api/projects/projects'
+import { useSession } from '@/api/session/session'
 import { toast } from 'sonner'
 import { addProjectAssetToEditor } from '@/lib/add-to-editor'
 import { AssetViewer } from '@/components/asset-viewer'
 import { LanguageToggle } from '@/components/language-toggle'
+import { ThemeToggle } from '@/components/theme-toggle'
 import { useMediaLightbox } from '@/components/media-lightbox'
 import { CommentPane } from '@/components/comment-pane'
 import type { ProjectListParams } from '@/lib/query-keys'
@@ -90,19 +93,13 @@ type ProjectSummary = {
   updatedAt: string
 }
 
-const STATUS_TABS = [
-  { id: '', label: 'All' },
-  { id: 'created', label: 'Created' },
-  { id: 'prepared', label: 'Prepared' },
-  { id: 'assigned', label: 'Assigned' },
-  { id: 'in_progress', label: 'In Process' },
-  { id: 'generated', label: 'Generated' },
-  { id: 'ready_for_review', label: 'Ready' },
-  { id: 'reviewing', label: 'Reviewing' },
-  { id: 'approved', label: 'Approved' },
-  { id: 'published', label: 'Published' },
-  { id: 'rejected', label: 'Rejected' },
-]
+// 负责人筛选(替代原状态 tab)。'' 全部 | 'unassigned' 未指派(可认领) | 'me' 指派给我。
+// 'me' 在查询时解析成当前会话 user.id(见 ProjectNav);URL 存哨兵值,分享链接天然按查看者解析。
+const ASSIGNEE_FILTERS = [
+  { id: '', labelKey: 'projectNav.filterAll' },
+  { id: 'unassigned', labelKey: 'projectNav.filterUnassigned' },
+  { id: 'me', labelKey: 'projectNav.filterMine' },
+] as const
 
 // 状态徽章配色(暗色适配自 xchangeai-workbench 的浅色语义:assigned=蓝 / approved=绿 …)
 const STATUS_STYLE: Record<string, string> = {
@@ -229,7 +226,7 @@ export function ProjectNav() {
   const navigate = useNavigate({ from: '/' })
   const selectedId = params.project ?? null
   const search = params.search ?? ''
-  const status = params.status ?? ''
+  const assignee = params.assignee ?? '' // URL 哨兵:'' | 'unassigned' | 'me'
   const sort = params.sort ?? 'created_desc'
 
   // 改筛选用 replace:搜索框每 300ms 防抖发一次,push 会把历史记录塞满。
@@ -240,7 +237,7 @@ export function ProjectNav() {
   )
   // 这三个一路传到 memo 化的 ListHeader,必须稳定
   const onSearch = useCallback((v: string) => setFilter({ search: v || undefined }), [setFilter])
-  const onStatusChange = useCallback((v: string) => setFilter({ status: v || undefined }), [setFilter])
+  const onAssigneeChange = useCallback((v: string) => setFilter({ assignee: v || undefined }), [setFilter])
   const onSortChange = useCallback((v: string) => setFilter({ sort: v }), [setFilter])
 
   // active = 哪一栏(该)展开;collapsed = 两栏同时收起。
@@ -254,9 +251,17 @@ export function ProjectNav() {
     defaultValue: false,
   })
 
-  // 列表数据由 ListContent 自己按可见区间取(虚拟化 → 随机访问),这里只留 stats 供 tab 计数。
-  const params2 = useMemo(() => ({ search, status, sort }), [search, status, sort])
+  // 「我的项目」= 指派给当前会话用户 → 查询时把哨兵 'me' 解析成自身 id;会话未就绪时退回全部。
+  const meId = useSession().data?.user?.id
+  const apiAssignee = assignee === 'me' ? (meId ?? '') : assignee
+
+  // 列表数据由 ListContent 自己按可见区间取(虚拟化 → 随机访问),这里只留 stats + 两个计数供筛选行。
+  const params2 = useMemo(() => ({ search, assignee: apiAssignee, sort }), [search, apiAssignee, sort])
   const stats = useProjectStats()
+  // 筛选行计数:All=stats.total;Unassigned/My 各发一个 limit:1 列表读 total(全局,不跟随搜索)。
+  const allCount = stats.data?.total
+  const unassignedCount = useAssigneeCount('unassigned', true).data
+  const mineCount = useAssigneeCount(meId ?? '', Boolean(meId)).data
   const statsRefetch = stats.refetch
   const refreshStats = useCallback(() => void statsRefetch(), [statsRefetch])
   const detail = useProject(selectedId)
@@ -311,12 +316,13 @@ export function ProjectNav() {
             visible={listExpanded}
             onToggleCollapse={() => setCollapsed(true)}
             params={params2}
-            statsTotal={stats.data?.total}
-            statusCounts={stats.data?.statusCounts ?? {}}
+            allCount={allCount}
+            unassignedCount={unassignedCount}
+            mineCount={mineCount}
             search={search}
             onSearch={onSearch}
-            status={status}
-            onStatusChange={onStatusChange}
+            assignee={assignee}
+            onAssigneeChange={onAssigneeChange}
             sort={sort}
             onSortChange={onSortChange}
             onRefreshStats={refreshStats}
@@ -478,12 +484,13 @@ function PanelBody({ children }: { children: React.ReactNode }) {
 const ListHeader = memo(function ListHeader({
   search,
   onSearch,
-  status,
-  onStatusChange,
+  assignee,
+  onAssigneeChange,
   sort,
   onSortChange,
-  statusCounts,
   allCount,
+  unassignedCount,
+  mineCount,
   syncing,
   onSync,
   onToggleCollapse,
@@ -491,12 +498,14 @@ const ListHeader = memo(function ListHeader({
 }: {
   search: string
   onSearch: (value: string) => void
-  status: string
-  onStatusChange: (value: string) => void
+  assignee: string
+  onAssigneeChange: (value: string) => void
   sort: string
   onSortChange: (value: string) => void
-  statusCounts: Record<string, number>
-  allCount: number
+  // 三档计数(数字为原始类型 → memo 逐值比较稳定;undefined = 尚未加载)
+  allCount?: number
+  unassignedCount?: number
+  mineCount?: number
   syncing: boolean
   onSync: () => void
   onToggleCollapse: () => void
@@ -511,6 +520,7 @@ const ListHeader = memo(function ListHeader({
           {/* 与收起态 rail 顶部的 toggle 同一位置(最左),避免来回切时按钮跳位 */}
           <CollapseToggle collapsed={false} onToggle={onToggleCollapse} />
           <span className="flex-1 text-sm font-semibold">{t('projectNav.projects')}</span>
+          <ThemeToggle />
           <LanguageToggle />
           <Button
             variant="ghost"
@@ -532,14 +542,14 @@ const ListHeader = memo(function ListHeader({
         {/* tab 条本来就有左右渐隐,再加一条横向滚动条只会挤掉半行高度 */}
         <ScrollArea viewportRef={tabsViewportRef} scrollbar="none" className="w-full">
           <div className="flex w-max gap-1">
-            {STATUS_TABS.map((tab) => {
-              const count = tab.id ? (statusCounts[tab.id] ?? 0) : allCount
-              const isActive = status === tab.id
+            {ASSIGNEE_FILTERS.map((f) => {
+              const count = f.id === '' ? allCount : f.id === 'unassigned' ? unassignedCount : mineCount
+              const isActive = assignee === f.id
               return (
                 <button
-                  key={tab.id || 'all'}
+                  key={f.id || 'all'}
                   type="button"
-                  onClick={() => onStatusChange(tab.id)}
+                  onClick={() => onAssigneeChange(f.id)}
                   className={cn(
                     'flex shrink-0 items-center gap-1 rounded-md px-2 py-1 text-xs whitespace-nowrap transition-colors',
                     isActive
@@ -547,8 +557,10 @@ const ListHeader = memo(function ListHeader({
                       : 'text-muted-foreground hover:bg-sidebar-accent/50',
                   )}
                 >
-                  <span>{tab.label}</span>
-                  <span className={cn('tabular-nums', isActive && 'font-semibold')}>{count}</span>
+                  <span>{t(f.labelKey)}</span>
+                  {count !== undefined ? (
+                    <span className={cn('tabular-nums', isActive && 'font-semibold')}>{count}</span>
+                  ) : null}
                 </button>
               )
             })}
@@ -581,12 +593,13 @@ const ListHeader = memo(function ListHeader({
 
 function ListContent({
   params,
-  statsTotal,
-  statusCounts,
+  allCount,
+  unassignedCount,
+  mineCount,
   search,
   onSearch,
-  status,
-  onStatusChange,
+  assignee,
+  onAssigneeChange,
   sort,
   onSortChange,
   onRefreshStats,
@@ -598,12 +611,13 @@ function ListContent({
   visible,
 }: {
   params: ProjectListParams
-  statsTotal?: number
-  statusCounts: Record<string, number>
+  allCount?: number
+  unassignedCount?: number
+  mineCount?: number
   search: string
   onSearch: (value: string) => void
-  status: string
-  onStatusChange: (value: string) => void
+  assignee: string
+  onAssigneeChange: (value: string) => void
   sort: string
   onSortChange: (value: string) => void
   onRefreshStats: () => void
@@ -621,7 +635,7 @@ function ListContent({
   useScrollFade(tabsViewportRef, 'horizontal') // 状态 tab 左右阴影
 
   // 锚点按筛选分桶:换了筛选就是另一批数据,位置不该串。
-  const anchorKey = `nav.anchor:${params.search}|${params.status}|${params.sort}`
+  const anchorKey = `nav.anchor:${params.search}|${params.assignee}|${params.sort}`
   const [anchor, setAnchor] = useState<Anchor | null>(() => readAnchor(anchorKey))
 
   // 该取哪几页。初值直接落在锚点所在页,于是「刷新 → 回到原位」只有一个请求,
@@ -732,12 +746,13 @@ function ListContent({
       <ListHeader
         search={search}
         onSearch={onSearch}
-        status={status}
-        onStatusChange={onStatusChange}
+        assignee={assignee}
+        onAssigneeChange={onAssigneeChange}
         sort={sort}
         onSortChange={onSortChange}
-        statusCounts={statusCounts}
-        allCount={statsTotal ?? total}
+        allCount={allCount ?? total}
+        unassignedCount={unassignedCount}
+        mineCount={mineCount}
         syncing={isFetching}
         onSync={onSync}
         onToggleCollapse={onToggleCollapse}
