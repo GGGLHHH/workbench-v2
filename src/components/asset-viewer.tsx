@@ -2,6 +2,12 @@ import type { BffTag } from '@/generated/api-types'
 import { CommentTimeline } from '@/components/comment-timeline'
 import { MediaLightbox, type ViewerItem } from '@/components/media-lightbox'
 import { TagInfiniteSelect } from '@/components/tag-infinite-select'
+import {
+  InfiniteSelectCancelButton,
+  InfiniteSelectConfirmButton,
+  InfiniteSelectFooter,
+} from '@/components/select/infinite-select'
+import { Separator } from '@/components/ui/separator'
 
 // 项目资产查看器 = 媒体灯箱 + 房间标签 + 该资产的评论(可发)。
 // 房间标签走 tag 目录的无限下拉(TagInfiniteSelect,从「已有」标签绑定,不新建);评论走右栏的
@@ -96,8 +102,15 @@ function AssetTagField({
       selectedItems={tags}
       onChange={onChange}
       searchPlaceholder="搜索房间标签…"
-      emptyLabel="无匹配标签"
       contentClassName="min-w-56"
+      // 底部操作栏:组合式插槽。取消=丢弃勾选还原,确定=提交并关闭。各半 + 中间竖线由部件自带 flex-1。
+      slots={
+        <InfiniteSelectFooter>
+          <InfiniteSelectCancelButton>取消</InfiniteSelectCancelButton>
+          <Separator orientation="vertical" />
+          <InfiniteSelectConfirmButton>确定</InfiniteSelectConfirmButton>
+        </InfiniteSelectFooter>
+      }
     >
       {({ selectedItems }) => {
         const chips = selectedItems ?? []

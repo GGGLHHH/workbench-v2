@@ -1,20 +1,21 @@
 import { useControllableValue, useDebounceFn } from 'ahooks'
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactElement, type ReactNode } from 'react'
-import { reject } from 'ramda'
 
-import type { InfiniteSelectAdapterProps } from '@/lib/use-infinite-list'
+import type { InfiniteSelectAdapterProps } from '@/components/select/use-infinite-list'
 
 import {
   InfiniteSelect,
+  InfiniteSelectActionsProvider,
   type ControllableSelectionProps,
+  type InfiniteSelectActions,
   type InfiniteSelectItemRenderParams,
   type InfiniteSelectOption,
 } from '@/components/select/infinite-select'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { cn } from '@/lib/utils'
 
-// 无限下拉组合框:一个受控 Popover 包住 InfiniteSelect,再加防抖搜索 + 「关闭时一次性提交」。
-// 从 xchangeai-web 移植(仅换 import 路径;v2 的 Popover 同为 base-ui 封装,render/--anchor-width 兼容)。
+// 无限下拉组合框:受控 Popover 包住 InfiniteSelect + 防抖搜索 + 「关闭时一次性提交」。对齐 basereact:
+// footer 的 clear/cancel/close 经 InfiniteSelectActions context 供给(不再是 render-prop),slots 单通道透传。
 
 export interface InfiniteComboboxStateOptions {
   open?: boolean
@@ -120,11 +121,9 @@ export function useInfiniteComboboxState({
         resetSearch()
         shouldResetOnNextOpenRef.current = false
       }
-
       if (!nextOpen) {
         shouldResetOnNextOpenRef.current = true
       }
-
       setOpenState(nextOpen)
     },
     [resetSearch, setOpenState],
@@ -155,7 +154,7 @@ export function useInfiniteComboboxState({
   }
 }
 
-export type InfiniteComboboxChildren<T> = ReactNode | ((params: InfiniteComboboxState<T>) => ReactNode)
+export type InfiniteComboboxChildren<T> = ReactElement | ((params: InfiniteComboboxState<T>) => ReactElement)
 
 interface InfiniteComboboxCommonProps<T> {
   children: InfiniteComboboxChildren<T>
@@ -168,14 +167,13 @@ interface InfiniteComboboxCommonProps<T> {
   align?: 'start' | 'center' | 'end'
   commitOnClose?: boolean
   searchPlaceholder?: string
-  emptyLabel?: ReactNode
-  loadingLabel?: ReactNode
-  loadingMoreLabel?: ReactNode
-  errorLabel?: ReactNode
-  retryLabel?: ReactNode
+  /**
+   * 唯一插槽通道:状态插槽 + 底部条,原样透传给 InfiniteSelect 的 children。
+   * 文案由上层注入;footer 内的 clear/cancel/close 用 useInfiniteSelectActions()。
+   */
+  slots?: ReactNode
   maxListHeight?: number
   closeOnSelect?: boolean
-  footer?: ReactNode
   selectClassName?: string
 }
 
@@ -205,19 +203,14 @@ export function InfiniteCombobox<T>(props: InfiniteComboboxProps<T>) {
     commitOnClose = false,
     contentClassName,
     disabled = false,
-    emptyLabel,
-    errorLabel,
     getOption,
     list,
-    loadingLabel,
-    loadingMoreLabel,
     maxListHeight,
     renderItem,
-    retryLabel,
     searchPlaceholder = 'Search',
+    slots,
     state,
     closeOnSelect = true,
-    footer,
     selectClassName,
   } = props
 
@@ -234,6 +227,7 @@ export function InfiniteCombobox<T>(props: InfiniteComboboxProps<T>) {
 
   const [draftIds, setDraftIds] = useState<string[]>(() => externalMultiValue ?? externalDefaultMulti ?? [])
   const draftItemsRef = useRef<T[]>([])
+  const draftIdsRef = useRef<string[]>([])
   const hasChangedRef = useRef(false)
   const prevOpenRef = useRef<boolean | undefined>(undefined)
   const selectedItemsCacheRef = useRef<Map<string, T>>(new Map())
@@ -252,10 +246,9 @@ export function InfiniteCombobox<T>(props: InfiniteComboboxProps<T>) {
     }
   }
 
-  const selectedItems = reject<T | undefined, undefined>(
-    (item): item is undefined => item === undefined,
-    selectedIds.map((id) => selectedItemsCacheRef.current.get(id)),
-  )
+  const selectedItems = selectedIds
+    .map((id) => selectedItemsCacheRef.current.get(id))
+    .filter((entry): entry is T => entry !== undefined)
 
   useEffect(() => {
     const wasOpen = prevOpenRef.current
@@ -263,23 +256,26 @@ export function InfiniteCombobox<T>(props: InfiniteComboboxProps<T>) {
     if (!deferredEnabled) return
 
     const justClosed = wasOpen === true && !state.open
-    if (justClosed && hasChangedRef.current) {
-      const nextIds = draftItemsRef.current.map((item) => getOption(item).id)
-      setSelectedValue(nextIds)
-      ;(props as { onChange?: (items: T[]) => void }).onChange?.(draftItemsRef.current)
+    const justCommitted = justClosed && hasChangedRef.current
+    if (justCommitted) {
+      // draftIdsRef 权威(来自 InfiniteSelect);draftItemsRef 只回显已加载的。
+      const ids = draftIdsRef.current
+      setSelectedValue(ids)
+      ;(props as { onChange?: (items: T[], ids: string[]) => void }).onChange?.(draftItemsRef.current, ids)
       hasChangedRef.current = false
     }
 
-    // 每次打开时(不是挂载/关闭时)播种草稿:受控 value 可能异步落定(服务端态)或因提交本身推进,
-    // 挂载/关闭时播种会让下一次会话的草稿落后一次提交 —— 切换就会静默丢掉这中间做的选择。
-    if (wasOpen !== true && state.open) {
+    // 刚提交完不要立刻还原成外部值:父层还没吃到 onChange,externalValueRef 是旧的 —— draftIds 已是提交后的 ids。
+    if (!justCommitted && (wasOpen === undefined || justClosed)) {
       const externalValue = externalValueRef.current
       if (externalValue !== undefined) {
         setDraftIds(externalValue)
-        hasChangedRef.current = false
+        if (!justClosed) {
+          hasChangedRef.current = false
+        }
       }
     }
-  }, [deferredEnabled, getOption, props, setSelectedValue, state.open])
+  }, [deferredEnabled, props, setSelectedValue, state.open])
 
   const handleOpenChange = useCallback(
     (next: boolean) => {
@@ -289,6 +285,45 @@ export function InfiniteCombobox<T>(props: InfiniteComboboxProps<T>) {
     [disabled, state],
   )
 
+  const clearSelection = useCallback(() => {
+    if (deferredEnabled) {
+      // 草稿路:清空草稿并标记「变过」,关弹层的 useEffect 便提交空集。
+      setDraftIds([])
+      draftIdsRef.current = []
+      draftItemsRef.current = []
+      hasChangedRef.current = true
+      return
+    }
+    if (props.multiple) {
+      setSelectedValue([])
+      props.onChange?.([], [])
+    } else {
+      setSelectedValue(undefined)
+      props.onChange?.(undefined)
+    }
+  }, [deferredEnabled, props, setSelectedValue])
+
+  const cancelSelection = useCallback(() => {
+    // 丢弃草稿、还原到已提交值,清「变过」标记 → 关闭时不提交。非草稿路无草稿可丢,直接关。
+    if (deferredEnabled) {
+      const committed = externalValueRef.current ?? []
+      hasChangedRef.current = false
+      setDraftIds(committed)
+      draftIdsRef.current = committed
+    }
+    state.setOpen(false)
+  }, [deferredEnabled, state])
+
+  // footer 里的 clear/cancel/close 经 Context 供给(shadcn 组合式)。Context 定义在底座 infinite-select
+  // (避免反向 import 成环),这里只填值。
+  const actions: InfiniteSelectActions<T> = {
+    selectedItems,
+    selectedIds,
+    clear: clearSelection,
+    cancel: cancelSelection,
+    close: () => state.setOpen(false),
+  }
+
   const trigger =
     typeof children === 'function'
       ? children({ ...state, selectedItems, selectedValue: effectiveSelectedValue as string | string[] | undefined })
@@ -296,73 +331,67 @@ export function InfiniteCombobox<T>(props: InfiniteComboboxProps<T>) {
 
   return (
     <Popover open={state.open} onOpenChange={handleOpenChange}>
-      <PopoverTrigger render={trigger as ReactElement} />
+      <PopoverTrigger render={trigger} />
       <PopoverContent
         align={align}
         className={cn(
-          // 保留 ui/popover 的外观(rounded bg-popover shadow ring),但清掉默认内边距/间距,
-          // 让 InfiniteSelect 自己贴边;w-(--anchor-width) 跟锚点(触发字段)等宽,ring-inset 把 1px 环画在内侧。
+          // 保留 ui/popover 的外观(rounded bg-popover shadow ring),清掉默认内边距,让 InfiniteSelect 贴边;
+          // w-(--anchor-width) 跟锚点等宽,ring-inset 把 1px 环画在内侧。
           'w-(--anchor-width) min-w-72 overflow-hidden p-0 ring-inset',
           contentClassName,
         )}
         sideOffset={4}
       >
-        {isMultiple ? (
-          <InfiniteSelect<T>
-            {...list}
-            emptyLabel={emptyLabel}
-            errorLabel={errorLabel}
-            getOption={getOption}
-            loadingLabel={loadingLabel}
-            loadingMoreLabel={loadingMoreLabel}
-            maxListHeight={maxListHeight}
-            multiple
-            className={selectClassName}
-            footer={footer}
-            onChange={(items) => {
-              const nextIds = items.map((item) => getOption(item).id)
-              if (deferredEnabled) {
-                setDraftIds(nextIds)
-                draftItemsRef.current = items
-                hasChangedRef.current = true
-                return
-              }
-              setSelectedValue(nextIds)
-              ;(props as { onChange?: (items: T[]) => void }).onChange?.(items)
-            }}
-            onSearchInputValueChange={state.setSearchValue}
-            renderItem={renderItem}
-            retryLabel={retryLabel}
-            searchInputValue={state.searchValue}
-            searchPlaceholder={searchPlaceholder}
-            value={deferredEnabled ? draftIds : ((selectedValue as string[] | undefined) ?? [])}
-          />
-        ) : (
-          <InfiniteSelect<T>
-            {...list}
-            emptyLabel={emptyLabel}
-            errorLabel={errorLabel}
-            getOption={getOption}
-            loadingLabel={loadingLabel}
-            loadingMoreLabel={loadingMoreLabel}
-            maxListHeight={maxListHeight}
-            className={selectClassName}
-            footer={footer}
-            onChange={(item) => {
-              setSelectedValue(item ? getOption(item).id : undefined)
-              ;(props as { onChange?: (item: T | undefined) => void }).onChange?.(item)
-              if (closeOnSelect) {
-                state.setOpen(false)
-              }
-            }}
-            onSearchInputValueChange={state.setSearchValue}
-            renderItem={renderItem}
-            retryLabel={retryLabel}
-            searchInputValue={state.searchValue}
-            searchPlaceholder={searchPlaceholder}
-            value={selectedValue as string | undefined}
-          />
-        )}
+        <InfiniteSelectActionsProvider value={actions}>
+          {props.multiple ? (
+            <InfiniteSelect<T>
+              {...list}
+              getOption={getOption}
+              maxListHeight={maxListHeight}
+              multiple
+              className={selectClassName}
+              onChange={(items, ids) => {
+                if (deferredEnabled) {
+                  setDraftIds(ids)
+                  draftItemsRef.current = items
+                  draftIdsRef.current = ids
+                  hasChangedRef.current = true
+                  return
+                }
+                setSelectedValue(ids)
+                props.onChange?.(items, ids)
+              }}
+              onSearchInputValueChange={state.setSearchValue}
+              renderItem={renderItem}
+              searchInputValue={state.searchValue}
+              searchPlaceholder={searchPlaceholder}
+              value={deferredEnabled ? draftIds : ((selectedValue as string[] | undefined) ?? [])}
+            >
+              {slots}
+            </InfiniteSelect>
+          ) : (
+            <InfiniteSelect<T>
+              {...list}
+              getOption={getOption}
+              maxListHeight={maxListHeight}
+              className={selectClassName}
+              onChange={(item) => {
+                setSelectedValue(item ? getOption(item).id : undefined)
+                props.onChange?.(item)
+                if (closeOnSelect) {
+                  state.setOpen(false)
+                }
+              }}
+              onSearchInputValueChange={state.setSearchValue}
+              renderItem={renderItem}
+              searchInputValue={state.searchValue}
+              searchPlaceholder={searchPlaceholder}
+              value={selectedValue as string | undefined}
+            >
+              {slots}
+            </InfiniteSelect>
+          )}
+        </InfiniteSelectActionsProvider>
       </PopoverContent>
     </Popover>
   )

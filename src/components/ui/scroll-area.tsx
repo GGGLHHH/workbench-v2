@@ -16,10 +16,14 @@ function ScrollArea({
   className,
   children,
   viewportRef,
+  viewportStyle,
   scrollbar = "hover",
   ...props
 }: ScrollAreaPrimitive.Root.Props & {
   viewportRef?: React.Ref<HTMLDivElement>
+  // 定高/滚动直接挂 Viewport(它才是滚动容器):Root 上的 max-height 不能约束 size-full 的
+  // 百分比高度,列表会溢出。给 { maxHeight, overflowY:'auto' } 让 Viewport 自身封顶并滚动。
+  viewportStyle?: React.CSSProperties
   scrollbar?: ScrollbarMode
 }) {
   return (
@@ -31,6 +35,7 @@ function ScrollArea({
       <ScrollAreaPrimitive.Viewport
         ref={viewportRef}
         data-slot="scroll-area-viewport"
+        style={viewportStyle}
         className="size-full rounded-[inherit] transition-[color,box-shadow] outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-1"
       >
         {children}

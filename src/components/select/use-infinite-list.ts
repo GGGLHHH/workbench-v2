@@ -1,9 +1,9 @@
 import { useInfiniteQuery, type QueryKey } from '@tanstack/react-query'
 import { useCallback, useMemo } from 'react'
 
-// 全站 limit/offset 分页协议的 useInfiniteQuery 封装(从 xchangeai-web 移植,去掉未用的 cursor 版)。
-// 领域 hook(如 useInfiniteTagOptions)套一层,喂 queryKey + 单页 queryFn,拿回已铺平的 items
-// 和一份对齐 <InfiniteSelect> 的 selectProps。
+// 全站 limit/offset 分页协议的 useInfiniteQuery 封装(对齐 basereact 的 select 基座:
+// 直接返回 <InfiniteSelect> 消费的 InfiniteSelectAdapterProps,不再套 { selectProps } 一层)。
+// basereact 那份只留 cursor 版;这里因下游 /bff/tags 是 offset 分页,保留 offset 版,形态一致。
 
 /** 与生成的 PageResponse 对齐的分页信封;空页后端可能回 items:null,这里归一。 */
 export interface InfiniteListPage<TItem> {
@@ -18,6 +18,7 @@ export interface InfiniteListPaginationParams {
   offset: number
 }
 
+/** 领域 hook 通用选项。 */
 export interface BaseInfiniteListOptions {
   /** 页大小,默认 20。 */
   pageSize?: number
@@ -47,27 +48,12 @@ export interface InfiniteSelectAdapterProps<TItem> {
   onRetry: () => void
 }
 
-export interface UseInfiniteListResult<TItem> {
-  items: TItem[]
-  total: number
-  hasNextPage: boolean
-  isLoading: boolean
-  isPending: boolean
-  isFetching: boolean
-  isFetchingNextPage: boolean
-  isError: boolean
-  error: unknown
-  fetchNextPage: () => void
-  refetch: () => void
-  selectProps: InfiniteSelectAdapterProps<TItem>
-}
-
 const DEFAULT_PAGE_SIZE = 20
 const EMPTY_ITEMS: readonly never[] = Object.freeze([])
 
 export function useInfiniteList<TItem, TExtraParams extends object = object>(
   options: UseInfiniteListOptions<TItem, TExtraParams>,
-): UseInfiniteListResult<TItem> {
+): InfiniteSelectAdapterProps<TItem> {
   const { queryKey, queryFn, baseParams, pageSize = DEFAULT_PAGE_SIZE, enabled, staleTime, gcTime } = options
 
   const query = useInfiniteQuery({
@@ -93,8 +79,6 @@ export function useInfiniteList<TItem, TExtraParams extends object = object>(
     return out
   }, [query.data])
 
-  const total = query.data?.pages.at(-1)?.total ?? 0
-
   const fetchNextPage = useCallback((): void => {
     void query.fetchNextPage()
   }, [query])
@@ -102,7 +86,7 @@ export function useInfiniteList<TItem, TExtraParams extends object = object>(
     void query.refetch()
   }, [query])
 
-  const selectProps = useMemo<InfiniteSelectAdapterProps<TItem>>(
+  return useMemo<InfiniteSelectAdapterProps<TItem>>(
     () => ({
       items,
       isLoading: query.isLoading,
@@ -114,19 +98,4 @@ export function useInfiniteList<TItem, TExtraParams extends object = object>(
     }),
     [items, query.isLoading, query.isFetchingNextPage, query.hasNextPage, query.isError, fetchNextPage, refetch],
   )
-
-  return {
-    items,
-    total,
-    hasNextPage: query.hasNextPage,
-    isLoading: query.isLoading,
-    isPending: query.isPending,
-    isFetching: query.isFetching,
-    isFetchingNextPage: query.isFetchingNextPage,
-    isError: query.isError,
-    error: query.error,
-    fetchNextPage,
-    refetch,
-    selectProps,
-  }
 }

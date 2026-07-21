@@ -8,11 +8,19 @@ import {
   useInfiniteComboboxState,
   type InfiniteComboboxChildren,
 } from '@/components/select/infinite-combobox'
-import { type ControllableSelectionProps, type InfiniteSelectOption } from '@/components/select/infinite-select'
+import {
+  InfiniteSelectEmpty,
+  InfiniteSelectError,
+  InfiniteSelectLoading,
+  InfiniteSelectLoadingMore,
+  InfiniteSelectRetry,
+  type ControllableSelectionProps,
+  type InfiniteSelectOption,
+} from '@/components/select/infinite-select'
 
-// tag 专用 select:把 tag 目录查询与 InfiniteCombobox 缝在一起。从 xchangeai-web 移植,
-// 去掉建标签(v2 只从已有目录绑定)。没有按 id 批量拉标签的端点,故不做 entity resolver ——
-// 由消费方持有已选的 tag 实体(如资产当前绑定的 tags)、渲染自己的标签、再作为 selectedItems 传回。
+// tag 专用 select:tag 目录查询 + InfiniteCombobox 基座。对齐 basereact 的分层:底座零文案,
+// 状态文案(空/加载/错误)在本业务层注入(v2 无 i18n,直接中文);slots 由调用方追加(如 footer)。
+// 去掉建标签(v2 只从已有目录绑定)。
 
 interface TagInfiniteSelectCommonProps {
   children: InfiniteComboboxChildren<BffTag>
@@ -27,23 +35,19 @@ interface TagInfiniteSelectCommonProps {
 
   pageSize?: number
 
-  /** 多选时把 onChange 延到 Popover 关闭:每次会话一次提交,而非每次勾选一次写入。 */
+  /** 多选时把 onChange 推迟到弹层关闭(每次会话一次提交)。 */
   commitOnClose?: boolean
 
   /**
-   * 当前 value 对应的 tag 实体。预选标签可能落在已加载页之外,而 select 只对「见过」的项解析
-   * 已提交的 id —— 解析不到的 id 会被静默从 onChange 剔掉,整组替换的消费方就会把它当删除持久化。
-   * 把已知的选中项传进来,保证每个预选 id 都可解析。
+   * 当前 value 对应的 tag 实体。预选标签可能落在已加载页之外,select 只对「见过」的 id 解析 —— 解析不到
+   * 会被静默从提交里剔掉,整组替换的消费方就当成删除。把已知选中项传进来,保证每个预选 id 可解析。
    */
   selectedItems?: BffTag[]
 
-  searchPlaceholder: string
-  emptyLabel?: ReactNode
-  loadingLabel?: ReactNode
-  loadingMoreLabel?: ReactNode
-  errorLabel?: ReactNode
-  retryLabel?: ReactNode
-  footer?: ReactNode
+  searchPlaceholder?: string
+
+  /** 追加插槽(如底部条 InfiniteSelectFooter),接在内置状态插槽之后。 */
+  slots?: ReactNode
 }
 
 export type TagInfiniteSelectProps = TagInfiniteSelectCommonProps & ControllableSelectionProps<BffTag>
@@ -56,14 +60,9 @@ export function TagInfiniteSelect(props: TagInfiniteSelectProps) {
     align = 'start',
     pageSize,
     commitOnClose = false,
-    searchPlaceholder,
+    searchPlaceholder = '搜索标签…',
     selectedItems,
-    emptyLabel,
-    loadingLabel,
-    loadingMoreLabel,
-    errorLabel,
-    retryLabel,
-    footer,
+    slots,
   } = props
 
   const combobox = useInfiniteComboboxState({
@@ -78,13 +77,16 @@ export function TagInfiniteSelect(props: TagInfiniteSelectProps) {
     enabled: combobox.open,
   })
 
-  // 见 selectedItems 的说明:不做这层合并,落在已加载页之外的预选标签就会从每次提交里静默掉。
+  // 把落在已加载页之外的预选标签并进来:关闭态查询是禁用的(list 为空),不并入的话触发器 chip 会空;
+  // 并入也顺带把它们喂进底座缓存,保证提交时每个预选 id 可解析。但**仅在无活跃搜索时**并 —— 搜索时
+  // 结果应纯粹(否则搜「厨房」还看见已选的「主卧」,空态也永不触发);已选项此前已进缓存,搜索期照样可提交。
   const listProps = useMemo(() => {
-    const loadedIds = new Set(list.selectProps.items.map((tag) => tag.id))
+    if (combobox.queryValue) return list
+    const loadedIds = new Set(list.items.map((tag) => tag.id))
     const missing = (selectedItems ?? []).filter((tag) => !loadedIds.has(tag.id))
-    if (missing.length === 0) return list.selectProps
-    return { ...list.selectProps, items: [...list.selectProps.items, ...missing] }
-  }, [list.selectProps, selectedItems])
+    if (missing.length === 0) return list
+    return { ...list, items: [...list.items, ...missing] }
+  }, [list, selectedItems, combobox.queryValue])
 
   const getOption = useCallback(
     (tag: BffTag): InfiniteSelectOption => ({ id: tag.id, label: tag.displayName || tag.name }),
@@ -93,21 +95,34 @@ export function TagInfiniteSelect(props: TagInfiniteSelectProps) {
 
   const selectionProps = getInfiniteComboboxSelectionProps<BffTag>(props)
 
+  // 内置中文状态插槽(始终渲染,按状态自显示);调用方 slots 追加在其后(如 footer)。
+  const stateSlots = (
+    <>
+      <InfiniteSelectEmpty>无匹配标签</InfiniteSelectEmpty>
+      <InfiniteSelectLoading>加载中…</InfiniteSelectLoading>
+      <InfiniteSelectLoadingMore>加载更多…</InfiniteSelectLoadingMore>
+      <InfiniteSelectError>
+        加载失败
+        <InfiniteSelectRetry>重试</InfiniteSelectRetry>
+      </InfiniteSelectError>
+    </>
+  )
+
   return (
     <InfiniteCombobox<BffTag>
       align={align}
       commitOnClose={props.multiple ? commitOnClose : false}
       contentClassName={contentClassName}
       disabled={disabled}
-      emptyLabel={emptyLabel}
-      errorLabel={errorLabel}
       getOption={getOption}
       list={listProps}
-      loadingLabel={loadingLabel}
-      loadingMoreLabel={loadingMoreLabel}
-      retryLabel={retryLabel}
-      footer={footer}
       searchPlaceholder={searchPlaceholder}
+      slots={
+        <>
+          {stateSlots}
+          {slots}
+        </>
+      }
       state={combobox}
       {...selectionProps}
     >

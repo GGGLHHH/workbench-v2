@@ -1,6 +1,6 @@
 import type { BffTag } from '@/generated/api-types'
 import { listBffTags } from '@/generated/client'
-import { useInfiniteList, type BaseInfiniteListOptions } from '@/lib/use-infinite-list'
+import { useInfiniteList, type BaseInfiniteListOptions } from '@/components/select/use-infinite-list'
 import { queryKeys } from '@/lib/query-keys'
 
 // tag 目录的无限下拉数据源:按 search 分页拉「已有」标签,喂给 TagInfiniteSelect。
