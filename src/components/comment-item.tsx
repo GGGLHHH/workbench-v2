@@ -204,7 +204,6 @@ export function CommentItem({
             items={media}
             index={viewer.index}
             rect={viewer.rect}
-            closing={viewer.closing}
             onIndexChange={viewer.onIndexChange}
             onClose={viewer.close}
             subtitle={t('commentItem.commentAttachments')}

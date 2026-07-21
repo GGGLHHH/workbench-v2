@@ -1180,7 +1180,6 @@ function AssetGrid({ projectId, assets }: { projectId: string; assets: NonNullab
         assets={assets}
         index={viewer.index}
         rect={viewer.rect}
-        closing={viewer.closing}
         onIndexChange={viewer.onIndexChange}
         onClose={viewer.close}
         onTagsChange={(assetId, tags) => saveTags.mutate({ projectId, assetId, tags })}

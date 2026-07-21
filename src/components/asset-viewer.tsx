@@ -1,3 +1,5 @@
+import { useRef } from 'react'
+
 import type { BffTag } from '@/generated/api-types'
 import { CommentPane } from '@/components/comment-pane'
 import { MediaLightbox, type ViewerItem } from '@/components/media-lightbox'
@@ -17,7 +19,6 @@ export function AssetViewer({
   assets,
   index,
   rect,
-  closing,
   onIndexChange,
   onClose,
   onTagsChange,
@@ -25,39 +26,42 @@ export function AssetViewer({
   assets: ViewerItem[]
   index: number | null
   rect?: { left: number; top: number; width: number; height: number } | null
-  closing?: boolean
   onIndexChange: (index: number) => void
   onClose: () => void
   onTagsChange?: (assetId: string, tags: BffTag[]) => void
 }) {
   const open = index !== null
-  const asset = open ? assets[index] : undefined
-  if (!asset) return null
+  // 不能像原来那样 open=false 就 return null —— 那会立刻卸载 MediaLightbox,base-ui 来不及播退出
+  // 过渡(表现为瞬间消失)。始终渲染,靠 MediaLightbox 自身 open/shownRef 走 base-ui 退出过渡。
+  // 冻结最后一张 asset:退出期间 index 已 null,footer/侧栏(标签/评论)仍要用上一张,否则退场中途塌掉。
+  const lastIndexRef = useRef(0)
+  if (open && index !== null) lastIndexRef.current = index
+  const asset = assets[open ? index : lastIndexRef.current]
+  const assetId = asset?.id
 
   return (
     <MediaLightbox
       items={assets}
       index={index}
       rect={rect}
-      closing={closing}
       onIndexChange={onIndexChange}
       onClose={onClose}
-      subtitle={asset.group ? (asset.group === 'creator' ? 'Resource' : 'Clip') : undefined}
+      subtitle={asset?.group ? (asset.group === 'creator' ? 'Resource' : 'Clip') : undefined}
       footer={
-        asset.id ? (
+        assetId ? (
           <AssetTagField
-            tags={asset.tags ?? []}
-            onChange={(tags) => onTagsChange?.(asset.id!, tags)}
+            tags={asset?.tags ?? []}
+            onChange={(tags) => onTagsChange?.(assetId, tags)}
             disabled={!onTagsChange}
           />
         ) : null
       }
       sidebar={
-        asset.id ? (
+        assetId ? (
           <CommentPane
             entity="asset"
-            id={asset.id}
-            total={asset.commentCount ?? 0}
+            id={assetId}
+            total={asset?.commentCount ?? 0}
             enabled={open}
             className="flex min-h-0 flex-1 flex-col"
           />

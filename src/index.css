@@ -18,17 +18,6 @@ body {
   overscroll-behavior: none;
 }
 
-/* 媒体灯箱 FLIP:整个弹窗从缩略图放大出现、缩回消失。--flip 由 JS 按点中的缩略图算出
-   (缩到缩略图大小 + 平移到缩略图中心);无 rect 时回退居中缩放。走 base-ui 的 data-open/data-closed。 */
-@keyframes lightbox-in {
-  from { transform: var(--flip, scale(0.92)); opacity: 0; }
-  to { transform: none; opacity: 1; }
-}
-@keyframes lightbox-out {
-  from { transform: none; opacity: 1; }
-  to { transform: var(--flip, scale(0.92)); opacity: 0; }
-}
-
 /* 主题切换圆形揭示(配合 lib/theme-transition.ts 的 View Transition):切换时给 <html> 加
    .theme-transitioning。关掉 root 快照的默认交叉淡入、新主题层置顶,只保留 JS 里 clip-path 的
    圆形扩散。scope 在 .theme-transitioning 下 → 不影响其它可能的视图过渡。 */

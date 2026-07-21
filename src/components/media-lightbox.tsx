@@ -30,7 +30,6 @@ export function MediaLightbox({
   items,
   index,
   rect,
-  closing = false,
   onIndexChange,
   onClose,
   subtitle,
@@ -42,8 +41,6 @@ export function MediaLightbox({
   index: number | null
   // 点中的缩略图矩形(视口 px)。弹窗从这里长出、缩回。
   rect?: FlipRect | null
-  // 关闭动画进行中:内容仍渲染、base-ui Root 仍 open,播 lightbox-out 后由 hook 延时卸载
-  closing?: boolean
   onIndexChange: (index: number) => void
   onClose: () => void
   subtitle?: string
@@ -70,15 +67,16 @@ export function MediaLightbox({
     return () => window.removeEventListener('keydown', onKeyDown)
   }, [open, index, items.length, onIndexChange])
 
-  if (!shown) return null
-  const item = shown.items[shown.index]
-  if (!item) return null
+  // 不再在无内容时 return null:base-ui 需要 Root 从一开始就以 open=false 挂着,首次打开(false→true)
+  // 才会播进场过渡;否则首次直接以 open=true 全新挂载会被当「初始即开」→ 不播进场 → 首次瞬现。
+  // 故 Root/Portal/Popup 常挂,只在有内容时渲染 Popup 内部(关闭时 base-ui 本就不挂 Popup)。
+  const item = shown ? shown.items[shown.index] : undefined
 
   // FLIP transform:把弹窗缩到缩略图大小(scale = 缩略图宽 / 弹窗宽)、中心平移到缩略图中心。
   // 弹窗居中(flex),中心 = 视口中心,故平移量 = 缩略图中心 − 视口中心。宽度按布局确定性算出,不用测量。
   const flip = (() => {
-    const r = shown.rect
-    if (!r || typeof window === 'undefined') return undefined
+    const r = shown?.rect
+    if (!r || typeof window === 'undefined') return 'scale(0.92)' // 无缩略图矩形:回退居中缩放
     const w = window.innerWidth
     const h = window.innerHeight
     const popupW = sidebar ? Math.min(0.95 * w, 1280) : Math.min(w - 32, 672)
@@ -88,33 +86,31 @@ export function MediaLightbox({
     return `translate(${tx}px, ${ty}px) scale(${scale.toFixed(4)})`
   })()
 
-  const total = shown.items.length
-  const idx = shown.index
+  const total = shown?.items.length ?? 0
+  const idx = shown?.index ?? 0
 
   return (
     <DialogPrimitive.Root open={open} onOpenChange={(next) => !next && onClose()}>
       <DialogPrimitive.Portal>
         <DialogPrimitive.Backdrop
-          className={cn(
-            'fixed inset-0 z-50 bg-black/50 duration-300 supports-backdrop-filter:backdrop-blur-xs',
-            closing ? 'opacity-0 transition-opacity' : 'animate-in fade-in-0',
-          )}
+          className="fixed inset-0 z-50 bg-black/50 transition-opacity duration-300 supports-backdrop-filter:backdrop-blur-xs data-starting-style:opacity-0 data-ending-style:opacity-0"
         />
-        {/* Popup 是 Portal 的直接子(不套包裹层)。inset-0 + m-auto 居中,transform 留给 FLIP keyframe。
-            enter/exit 由 closing 切换 lightbox-in / lightbox-out —— 自管挂载,不依赖 base-ui 的退出检测。 */}
+        {/* Popup 是 Portal 的直接子(不套包裹层)。inset-0 + m-auto 居中,transform 留给 FLIP。
+            enter/exit 走 base-ui 原生 data-starting/ending-style 过渡,base-ui 自己等过渡结束再卸载。 */}
         <DialogPrimitive.Popup
-          // --flip = 缩到缩略图大小 + 平移到缩略图中心的 transform;keyframe 用它做起止。origin 居中配合 translate。
+          // --flip = 缩到缩略图大小 + 平移到缩略图中心的 transform;starting/ending 两端用它做 FLIP。
           style={{ '--flip': flip } as React.CSSProperties}
           className={cn(
             'fixed inset-0 z-50 m-auto flex origin-center overflow-hidden rounded-xl bg-popover p-3 text-sm text-popover-foreground ring-1 ring-foreground/10 outline-none',
-            closing
-              ? '[animation:lightbox-out_.26s_cubic-bezier(.55,.06,.68,.19)_forwards]'
-              : '[animation:lightbox-in_.3s_cubic-bezier(.22,1,.36,1)_both]',
+            // base-ui 原生过渡:进场从 --flip 补到常态、退场补回 --flip;base-ui 自己等过渡结束再卸载。
+            'transition-[transform,opacity] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] data-starting-style:opacity-0 data-ending-style:opacity-0 data-starting-style:transform-(--flip) data-ending-style:transform-(--flip) data-ending-style:duration-[0.26s] data-ending-style:ease-[cubic-bezier(0.55,0.06,0.68,0.19)]',
             sidebar
               ? 'h-[calc(100vh-4rem)] w-[95vw] flex-row gap-3 sm:max-w-7xl'
               : 'h-fit max-h-[calc(100vh-4rem)] w-fit max-w-2xl flex-col gap-3',
           )}
         >
+          {item ? (
+            <>
             {/* 媒体列:标题 + 图/视频 + footer。左右布局时它是左栏,堆叠时它就是主体。 */}
             <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-3">
               <div className="flex min-w-0 flex-col gap-0.5 pr-8">
@@ -163,6 +159,8 @@ export function MediaLightbox({
               <X className="size-4" />
               <span className="sr-only">{t('lightbox.close')}</span>
             </DialogPrimitive.Close>
+            </>
+          ) : null}
         </DialogPrimitive.Popup>
       </DialogPrimitive.Portal>
     </DialogPrimitive.Root>
@@ -190,24 +188,19 @@ function Nav({ side, disabled, onClick }: { side: 'left' | 'right'; disabled: bo
 }
 
 // 开合状态挂在这里。open 时记下点中缩略图的矩形 → 弹窗从那里长出、缩回。
-// 关闭不立即卸载:先标 closing 播 lightbox-out(base-ui 的 Root 仍 open=true,不会抢先卸载),
-// 动画放完(280ms)再真正清空。这版 base-ui 的 Portal 在 open=false 时瞬间卸载、不等退出动画,故自管。
+// 关闭直接置空:base-ui 会给退出中的 Popup/Backdrop 挂 data-ending-style 并等 CSS 过渡结束再卸载
+// (见 MediaLightbox 的 transition 类),不必手动计时——之前的 closing+setTimeout 会和 base-ui
+// 自带的过渡状态机打架,表现为「关→又开→再关」的抖动。
 export function useMediaLightbox() {
-  const [state, setState] = useState<{ index: number; rect: FlipRect | null; closing?: boolean } | null>(null)
-  const timer = useRef<ReturnType<typeof setTimeout>>(undefined)
+  const [state, setState] = useState<{ index: number; rect: FlipRect | null } | null>(null)
   return {
     index: state?.index ?? null,
     rect: state?.rect ?? null,
-    closing: state?.closing ?? false,
     open: (index: number, ev?: { currentTarget: Element }) => {
-      clearTimeout(timer.current)
       const r = ev?.currentTarget?.getBoundingClientRect()
       setState({ index, rect: r ? { left: r.left, top: r.top, width: r.width, height: r.height } : null })
     },
-    close: () => {
-      setState((s) => (s ? { ...s, closing: true } : s))
-      timer.current = setTimeout(() => setState(null), 280)
-    },
+    close: () => setState(null),
     onIndexChange: (index: number) => setState((s) => (s ? { ...s, index } : s)),
   }
 }
