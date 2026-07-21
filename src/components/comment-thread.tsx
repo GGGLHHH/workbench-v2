@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { useCallback, useLayoutEffect, useRef, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { differenceInSeconds, format, isThisYear, isToday, isYesterday } from 'date-fns'
 import { Check, File as FileIcon, Loader2, Pencil, Trash2 } from 'lucide-react'
@@ -76,23 +76,16 @@ export function CommentThread({
   const meId = useQueryClient().getQueryData<BffSession>(queryKeys.session())?.user?.id
   const [showEarlier, setShowEarlier] = useState(false)
   const bottomRef = useRef<HTMLDivElement>(null)
-  const didInitScroll = useRef(false)
 
   const items = data?.items ?? []
   const hidden = showEarlier ? 0 : Math.max(0, items.length - INITIAL_VISIBLE)
   const visible = items.slice(hidden)
 
+  // 只在「自己发评论」后滚到底(见 CommentComposer onPosted)。不做首屏落底 —— 这个 thread 没有自己的
+  // 滚动容器,滚的是整个详情面板;开屏落底会把面板从顶部一路拽到评论区(表现就是刷新后跳到中间)。
   const scrollToBottom = useCallback(() => {
     requestAnimationFrame(() => bottomRef.current?.scrollIntoView({ block: 'nearest' }))
   }, [])
-
-  // 首屏落底一次(最新在底)。之后只有「自己发」才落底(见 CommentComposer onPosted)——
-  // 删除、展开更早、后台重取都不该把正在读历史的人拽走(原先无差别挂 items.length 就是拽人)。
-  useEffect(() => {
-    if (didInitScroll.current || items.length === 0) return
-    didInitScroll.current = true
-    scrollToBottom()
-  }, [items.length, scrollToBottom])
 
   return (
     <section className={cn('flex flex-col gap-2', className)}>
