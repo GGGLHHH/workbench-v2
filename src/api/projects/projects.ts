@@ -564,6 +564,48 @@ export function useDeliverProject() {
   })
 }
 
+// 删除项目资产(上游无单删,BFF 用整表替换实现)。乐观:从 detail.assets 摘掉该条 + 资源/片段计数减一,
+// 失败回滚。端点走 requestJson(未进生成 client,同 publish/deliver)。列表卡片缩略图可能取自它 →
+// 标记过期,下次 mount 再同步(不立刻重拉,免得缩略图闪)。
+export function useDeleteProjectAsset() {
+  const { t } = useTranslation()
+  return useMutation({
+    // assetKey = content_id(稳定):整表替换会重建资产 id,按 id 删第二次起会 404(见 BFF 注释)。
+    mutationFn: ({ projectId, assetKey }: { projectId: string; assetKey: string }) =>
+      requestJson<{ id: string; assetId: string }>(`/bff/projects/${projectId}/assets/${assetKey}`, {
+        method: 'DELETE',
+      }),
+    onMutate: async ({ projectId, assetKey }) => {
+      const key = queryKeys.projects.detail(projectId)
+      await queryClient.cancelQueries({ queryKey: key })
+      const previous = queryClient.getQueryData<BffProject>(key)
+      queryClient.setQueryData<BffProject>(key, (old) => {
+        const target = old?.detail?.assets?.find((a) => (a.contentId ?? a.id) === assetKey)
+        if (!old || !target) return old
+        return {
+          ...old,
+          detail: {
+            ...old.detail,
+            assets: (old.detail.assets ?? []).filter((a) => (a.contentId ?? a.id) !== assetKey),
+            resourceCount:
+              target.group === 'creator' ? Math.max(0, old.detail.resourceCount - 1) : old.detail.resourceCount,
+            clipCount: target.group === 'agent' ? Math.max(0, old.detail.clipCount - 1) : old.detail.clipCount,
+          },
+        }
+      })
+      return { key, previous }
+    },
+    onError: (error, _vars, context) => {
+      if (context?.previous) queryClient.setQueryData(context.key, context.previous)
+      toast.error(error instanceof Error && error.message ? error.message : t('projects.assetDeleteFailed'))
+    },
+    onSettled: (_d, _e, { projectId }) => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.projects.lists(), refetchType: 'none' })
+      void queryClient.invalidateQueries({ queryKey: queryKeys.projects.detail(projectId), refetchType: 'none' })
+    },
+  })
+}
+
 // action → 目标状态:确定性的正向推进可乐观预测。revert(后端决定退到哪一步)不在此表,
 // 乐观期只显示 busy、不猜 status,落地时用服务端返回的权威 status 校正。
 const NEXT_STATUS: Record<string, string> = {

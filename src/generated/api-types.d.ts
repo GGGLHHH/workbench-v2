@@ -337,6 +337,8 @@ export interface components {
         };
         BffProjectAsset: {
             id: string;
+            /** 手加:BFF 已返回(content_id 稳定引用,删除/加入编辑器用);下次 vg 重生成会自动带上 */
+            contentId?: null | string;
             group: string;
             url: string;
             thumbnailUrl?: null | string;

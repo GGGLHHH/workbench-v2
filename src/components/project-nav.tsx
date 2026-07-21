@@ -7,6 +7,7 @@ import { format, formatDistanceToNow } from 'date-fns'
 import { useTranslation } from 'react-i18next'
 import {
   Building2,
+  Check,
   ChevronDown,
   ChevronLeft,
   Clapperboard,
@@ -26,6 +27,7 @@ import {
   Share2,
   ThumbsDown,
   ThumbsUp,
+  Trash2,
   User,
 } from 'lucide-react'
 
@@ -37,6 +39,7 @@ import {
   PROJECTS_PAGE_SIZE,
   useAssigneeCount,
   useChangeProjectStatus,
+  useDeleteProjectAsset,
   useProject,
   useProjectAnalytics,
   useProjectOptions,
@@ -1105,6 +1108,9 @@ function AssetGrid({ projectId, assets }: { projectId: string; assets: NonNullab
   ] as const
   const viewer = useMediaLightbox()
   const saveTags = useSaveAssetTags()
+  const del = useDeleteProjectAsset()
+  // 删除首点转确认(红 + 勾),再点才真删 —— 与状态菜单/评论删除同套二次确认,不用 window.confirm
+  const [confirmDel, setConfirmDel] = useState<string | null>(null)
   const [adding, setAdding] = useState<string | null>(null)
   // 加入编辑器:探测尺寸 → 建素材 + 时间线条目落到右侧编辑器(见 add-to-editor)
   const handleAdd = async (a: NonNullable<BffProjectDetail['assets']>[number]) => {
@@ -1169,6 +1175,35 @@ function AssetGrid({ projectId, assets }: { projectId: string; assets: NonNullab
                     className="absolute top-1 left-1 inline-flex size-6 items-center justify-center rounded bg-black/60 text-white opacity-0 shadow transition-opacity group-hover:opacity-100 hover:bg-black/80 focus-visible:opacity-100 disabled:opacity-60"
                   >
                     {adding === a.id ? <Loader2 className="size-3.5 animate-spin" /> : <Plus className="size-3.5" />}
+                  </button>
+                  {/* hover 显现:删除该资产(整表替换实现)。首点转确认,再点真删;失焦即撤销确认。 */}
+                  <button
+                    type="button"
+                    aria-label={confirmDel === a.id ? t('projectNav.confirmDeleteAsset') : t('projectNav.deleteAsset')}
+                    title={confirmDel === a.id ? t('projectNav.confirmDeleteAsset') : t('projectNav.deleteAsset')}
+                    disabled={del.isPending && del.variables?.assetKey === (a.contentId ?? a.id)}
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      if (confirmDel === a.id) {
+                        setConfirmDel(null)
+                        del.mutate({ projectId, assetKey: a.contentId ?? a.id })
+                      } else {
+                        setConfirmDel(a.id)
+                      }
+                    }}
+                    onBlur={() => setConfirmDel(null)}
+                    className={cn(
+                      'absolute top-1 right-1 inline-flex size-6 items-center justify-center rounded text-white opacity-0 shadow transition-opacity group-hover:opacity-100 focus-visible:opacity-100 disabled:opacity-60',
+                      confirmDel === a.id ? 'bg-red-600/90 opacity-100 hover:bg-red-600' : 'bg-black/60 hover:bg-black/80',
+                    )}
+                  >
+                    {del.isPending && del.variables?.assetKey === (a.contentId ?? a.id) ? (
+                      <Loader2 className="size-3.5 animate-spin" />
+                    ) : confirmDel === a.id ? (
+                      <Check className="size-3.5" />
+                    ) : (
+                      <Trash2 className="size-3.5" />
+                    )}
                   </button>
                 </div>
               ))}

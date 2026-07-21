@@ -31,6 +31,7 @@ import {
   publishProject,
   reassignProject,
   rejectProject,
+  replaceProjectAgentAssets,
   replaceProjectAssetTags,
   replaceProjectCreatorAssets,
   resubmitProject,
@@ -966,6 +967,54 @@ export const registerProjectRoutes = (app: FastifyInstance): void => {
       // 回真实的 assignee:'me' 的落点只有服务端知道,取消指派也要把名字清掉
       const proj = await getProject({ path: { id } }, auth)
       return { assignee: proj.assignee?.name ?? null, assigneeId: proj.assignee_id ?? proj.assignee?.id ?? null }
+    },
+  )
+
+  // 删除项目资产:上游无「删单个」,只有整表替换(replaceProjectCreator/AgentAssets)→ 取该组当前
+  // content_id 列表去掉这一个再整表替换。资产落 creator 还是 agent 组由服务端从 getProject 判定。
+  // 关键:按 content_id 匹配(稳定)。整表替换会重建资产的 id,若按 id 匹配,第一次之后前端缓存里
+  // 其余资产的 id 全部失效 → 404;content_id 是替换列表的元素,永不变。id 仅作次级兜底。
+  type UpstreamAsset = { id?: string; content_id?: string };
+  app.delete<{ Params: { id: string; assetId: string } }>(
+    '/bff/projects/:id/assets/:assetId',
+    {
+      schema: {
+        operationId: 'deleteBffProjectAsset',
+        tags: ['bff'],
+        params: {
+          type: 'object',
+          required: ['id', 'assetId'],
+          properties: { id: { type: 'string' }, assetId: { type: 'string' } },
+        },
+        response: {
+          200: {
+            type: 'object',
+            required: ['id', 'assetId'],
+            properties: { id: { type: 'string' }, assetId: { type: 'string' } },
+          },
+        },
+      },
+    },
+    async (req, reply) => {
+      const { id, assetId } = req.params;
+      const auth = forwardAuth(req);
+      const proj = (await getProject({ path: { id } }, auth)) as unknown as {
+        creator_assets?: UpstreamAsset[];
+        agent_assets?: UpstreamAsset[];
+      };
+      const isTarget = (x: UpstreamAsset) => x.content_id === assetId || x.id === assetId;
+      const remaining = (list: UpstreamAsset[]) =>
+        list.filter((x) => !isTarget(x) && x.content_id).map((x) => x.content_id as string);
+      const creators = proj.creator_assets ?? [];
+      const agents = proj.agent_assets ?? [];
+      if (creators.some(isTarget)) {
+        await replaceProjectCreatorAssets({ path: { id }, body: { creator_assets: remaining(creators) } }, auth);
+      } else if (agents.some(isTarget)) {
+        await replaceProjectAgentAssets({ path: { id }, body: { agent_assets: remaining(agents) } }, auth);
+      } else {
+        return reply.code(404).send({ error: 'asset not found' });
+      }
+      return { id, assetId };
     },
   )
 
