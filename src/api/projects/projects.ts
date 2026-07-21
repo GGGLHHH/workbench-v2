@@ -16,6 +16,7 @@ import type {
   BffProjectMetaRequest,
   BffProjectPage,
   BffProjectSaveRequest,
+  BffSession,
   BffTag,
 } from '@/generated/api-types'
 import {
@@ -300,8 +301,16 @@ export function useCreateComment(entity: CommentEntity) {
       const previous = queryClient.getQueryData<CommentCache>(key)
       // 临时 id 用时间戳,避免与「total 相同」的老写法在快速连发时撞号
       const tempId = `pending:${Date.now()}`
+      // 带上当前用户:否则乐观项 authorId 为空 → 先按「别人」渲染到左边,onSuccess 才翻到右(左→右闪烁)
+      const me = queryClient.getQueryData<BffSession>(queryKeys.session())?.user
       queryClient.setQueryData<CommentCache>(key, (old) =>
-        appendComment(old, { id: tempId, author: '…', content, createdAt: new Date().toISOString() }),
+        appendComment(old, {
+          id: tempId,
+          author: me?.name ?? '…',
+          authorId: me?.id ?? null,
+          content,
+          createdAt: new Date().toISOString(),
+        }),
       )
       adjustCommentCount(entity, id, 1) // 角标 +1(乐观)
       return { key, previous, tempId }
