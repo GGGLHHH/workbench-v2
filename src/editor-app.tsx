@@ -1,14 +1,19 @@
 import { useEffect, useRef } from 'react'
 import { useSearch } from '@tanstack/react-router'
+import { Clapperboard, Loader2, UploadCloud } from 'lucide-react'
+import { toast } from 'sonner'
 import type { UndoableState } from '@gedatou/shared'
 import {
-  EditorRoot,
+  Editor,
+  EditorProvider,
   createEditorStore,
   createInstanceRefs,
   restoreLocalUrls,
+  useEditor,
 } from '@gedatou/editor'
 import { createHttpTransport, createBrowserStorage } from '@gedatou/editor/adapters'
-import { useProject, useSaveProject } from '@/api/projects/projects'
+import { Button } from '@/components/ui/button'
+import { useDeliverProject, useProject, usePublishProject, useSaveProject } from '@/api/projects/projects'
 import { sonnerNotify } from '@/notify'
 import { buildDemoState } from '@/demo-state'
 
@@ -29,7 +34,7 @@ const deps = { transport, storage, notify: sonnerNotify }
 
 // 无选中项目时的占位工程:localStorage 恢复,回退 demo。选中项目后由 EditorApp 重置成该工程。
 const initialState = (browser.loadProject() as UndoableState | null) ?? buildDemoState()
-// 导出:成片交付按钮(project-nav)读 renderingTasks 取渲染产物 URL。单例,无循环依赖。
+// 导出:project-detail 的「加入编辑器」(add-to-editor)按需写入这个单例。
 export const editorStore = createEditorStore({ undoable: initialState })
 editorStore.setState({ lastSavedState: initialState })
 void restoreLocalUrls(editorStore, deps, initialState)
@@ -38,6 +43,51 @@ const editorRefs = createInstanceRefs()
 if (import.meta.env.DEV) {
   ;(window as unknown as Record<string, unknown>).__editorStore = editorStore
   ;(window as unknown as Record<string, unknown>).__playerRef = editorRefs.player
+}
+
+// 发布:把本地 server 素材上传平台 + 改写引用 + 推时间线（读已存态，故内部先保存）。
+// 原在 project-nav 详情顶栏,移进编辑器工具栏 —— 项目级动作,但紧挨保存/渲染更顺手。
+function PublishButton({ id }: { id: string | null }) {
+  const publish = usePublishProject()
+  return (
+    <Button
+      variant="outline"
+      size="sm"
+      disabled={!id || publish.isPending}
+      onClick={() => id && publish.mutate({ id })}
+      title="发布素材到平台"
+    >
+      {publish.isPending ? <Loader2 className="size-4 animate-spin" /> : <UploadCloud className="size-4" />}
+      发布
+    </Button>
+  )
+}
+
+// 交付:取编辑器最新渲染产物 URL → BFF 绑 creator-asset。renderingTasks 现经 useEditor
+// 从 context 取(context-connected),不再伸手进 editorStore 单例。
+function DeliverButton({ id }: { id: string | null }) {
+  const deliver = useDeliverProject()
+  const renderingTasks = useEditor((s) => s.renderingTasks)
+  return (
+    <Button
+      variant="outline"
+      size="sm"
+      disabled={!id || deliver.isPending}
+      onClick={() => {
+        if (!id) return
+        const done = [...renderingTasks].reverse().find((t) => t.status === 'done' && t.url)
+        if (!done?.url) {
+          toast.error('请先在编辑器渲染导出成片')
+          return
+        }
+        deliver.mutate({ id, videoUrl: done.url })
+      }}
+      title="交付成片到平台"
+    >
+      {deliver.isPending ? <Loader2 className="size-4 animate-spin" /> : <Clapperboard className="size-4" />}
+      交付
+    </Button>
+  )
 }
 
 export function EditorApp() {
@@ -65,5 +115,38 @@ export function EditorApp() {
     // ponytail: 直接重置会丢弃未保存改动(gotcha #5,脏检查/切换确认待产品拍板后单独接)
   }, [id, state])
 
-  return <EditorRoot store={editorStore} refs={editorRefs} deps={deps} />
+  // compound 拼装:替代 <EditorRoot>。删掉 demo 专用的下载/导入状态按钮(平台持久化到 BFF,
+  // 本地 JSON 存取无意义),发布/交付作为宿主自定义按钮放进工具栏右侧。
+  return (
+    <EditorProvider store={editorStore} refs={editorRefs} deps={deps}>
+      <Editor.Container>
+        <Editor.Toolbar>
+          <Editor.Title />
+          <Editor.UndoButton />
+          <Editor.RedoButton />
+          <Editor.PlayButton />
+          <Editor.TextToolButton />
+          <Editor.SolidToolButton />
+          <Editor.ImportAssetButton />
+          <Editor.UploadStatusBadge />
+          <Editor.CaptioningBadge />
+          <div className="ml-auto flex items-center gap-1.5">
+            <Editor.ZoomControls />
+            <Editor.CleanupAssetsButton />
+            <Editor.SaveButton />
+            <PublishButton id={id ?? null} />
+            <DeliverButton id={id ?? null} />
+          </div>
+        </Editor.Toolbar>
+        <div className="flex min-h-0 flex-1">
+          <Editor.Canvas />
+          <aside className="w-[349px] shrink-0 overflow-y-auto border-l border-border text-sm">
+            <Editor.Inspector />
+          </aside>
+        </div>
+        <Editor.PlaybackBar />
+        <Editor.Timeline />
+      </Editor.Container>
+    </EditorProvider>
+  )
 }
