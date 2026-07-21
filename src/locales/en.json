@@ -54,6 +54,188 @@
     "retry": "Retry",
     "save": "Save"
   },
+  "editor": {
+    "assets": {
+      "fileTooLarge": "File too large: {{name}} (max {{max}}MB)",
+      "importFailed": "Import failed: {{name}}",
+      "uploadFailed": "Upload failed: {{name}}"
+    },
+    "canvas": {
+      "defaultText": "Text"
+    },
+    "captioning": {
+      "generateFailed": "Caption generation failed",
+      "generated": "Captions generated"
+    },
+    "captionsPanel": {
+      "color": "Color",
+      "font": "Font",
+      "fontSize": "Font size",
+      "highlightColor": "Highlight color",
+      "maxLines": "Max lines",
+      "pageDurationMs": "Page duration (ms)",
+      "startMs": "Start (ms)",
+      "style": "Caption style",
+      "wordCorrection": "Word correction"
+    },
+    "fields": {
+      "fadeIn": "Fade in (s)",
+      "fadeOut": "Fade out (s)"
+    },
+    "fontPicker": {
+      "noMatch": "No matching fonts",
+      "searchPlaceholder": "Search fonts…"
+    },
+    "inspector": {
+      "align": "Align",
+      "alignBottom": "Align bottom",
+      "alignCenterH": "Center horizontally",
+      "alignCenterV": "Center vertically",
+      "alignLeft": "Align left",
+      "alignRight": "Align right",
+      "alignTop": "Align top",
+      "borderRadius": "Corner radius",
+      "canvas": "Canvas",
+      "captions": "Captions",
+      "color": "Color",
+      "crop": "Crop",
+      "cropBottom": "Bottom",
+      "cropH": "Crop height",
+      "cropLeft": "Left",
+      "cropOutOfRange": "Playhead is outside this element's time range",
+      "cropRight": "Right",
+      "cropTop": "Top",
+      "cropW": "Crop width",
+      "cropX": "Crop X",
+      "cropY": "Crop Y",
+      "download": "Download",
+      "duration": "Duration",
+      "enterCrop": "Enter crop",
+      "export": "Export",
+      "extractingAudio": "Extracting audio…",
+      "fade": "Fade",
+      "failed": "Failed",
+      "fill": "Fill",
+      "generateCaptions": "Generate captions",
+      "layout": "Layout",
+      "lockAspect": "Lock aspect ratio",
+      "opacity": "Opacity",
+      "position": "Position",
+      "render": "Render",
+      "reset": "Reset",
+      "rotate90": "Rotate 90°",
+      "rotation": "Rotation",
+      "size": "Size",
+      "statusError": "Upload failed",
+      "statusInProgress": "Uploading…",
+      "statusPendingUpload": "Pending upload",
+      "statusUploaded": "Uploaded",
+      "swapDimensions": "Swap dimensions",
+      "transcribing": "Transcribing…",
+      "uploading": "Uploading {{progress}}%"
+    },
+    "itemBlock": {
+      "fadeIn": "Fade in",
+      "fadeOut": "Fade out",
+      "volume": "Volume"
+    },
+    "mediaPanel": {
+      "audio": "Audio",
+      "mute": "Mute",
+      "speed": "Speed",
+      "video": "Video",
+      "volume": "Volume"
+    },
+    "persistence": {
+      "invalidProjectFile": "Invalid project file, cannot restore",
+      "saved": "Saved"
+    },
+    "playback": {
+      "fullscreen": "Fullscreen",
+      "loop": "Loop",
+      "mute": "Mute",
+      "playPause": "Play/Pause (Space)",
+      "skipToEnd": "Skip to end",
+      "skipToStart": "Skip to start"
+    },
+    "render": {
+      "createFailed": "Failed to create render job",
+      "done": "Render complete, download from the Render panel",
+      "failed": "Render failed"
+    },
+    "selectionOverlay": {
+      "bringToFront": "Bring to front",
+      "copy": "Copy",
+      "cut": "Cut",
+      "duplicate": "Duplicate",
+      "sendToBack": "Send to back"
+    },
+    "textPanel": {
+      "align": "Align",
+      "background": "Background",
+      "borderRadius": "Corner radius",
+      "color": "Color",
+      "direction": "Direction",
+      "enable": "Enable",
+      "fontFamily": "Font",
+      "fontSize": "Font size",
+      "fontWeight": "Font weight",
+      "letterSpacing": "Letter spacing",
+      "lineHeight": "Line height",
+      "padding": "Padding",
+      "stroke": "Stroke",
+      "text": "Text",
+      "typography": "Typography",
+      "width": "Width"
+    },
+    "timeline": {
+      "bringToFront": "Bring to front",
+      "copy": "Copy",
+      "cut": "Cut",
+      "duplicate": "Duplicate",
+      "fit": "Fit",
+      "fitTitle": "Fit: zoom so the full duration is visible",
+      "sendToBack": "Send to back",
+      "snapTitle": "Snap (Shift+M)",
+      "snapTooltip": "Toggle snap (Shift+M)",
+      "split": "Split at playhead (S)",
+      "trackHideShow": "Hide/Show",
+      "trackMute": "Mute",
+      "zoom": "Zoom",
+      "zoomIn": "Zoom in",
+      "zoomOut": "Zoom out",
+      "zoomResetTitle": "Click to reset to Fit"
+    },
+    "toolbar": {
+      "cancel": "Cancel",
+      "captionFailed": "Transcription failed {{count}}",
+      "captioning": "Transcribing {{count}}…",
+      "cleanupAssets": "Clean up assets ({{count}})",
+      "cleanupDesc": "This will permanently delete the remote objects and local cache for {{count}} removed assets, and clear the undo history. This cannot be undone.",
+      "cleanupTitle": "Permanently delete removed assets?",
+      "confirmDelete": "Confirm delete",
+      "downloadState": "Download project file (.json)",
+      "downloadStateLabel": "Download state",
+      "fit": "Fit",
+      "fitCanvas": "Fit canvas (0)",
+      "importAsset": "Import assets",
+      "importState": "Import state",
+      "importStateTitle": "Restore project from a .json file",
+      "playPause": "Play/Pause (Space)",
+      "redo": "Redo (Cmd+Y)",
+      "save": "Save (Cmd+S)",
+      "saveLabel": "Save",
+      "solid": "Solid",
+      "solidTool": "Draw solid: drag on the canvas to draw a box (Esc to cancel)",
+      "text": "Text",
+      "textTool": "Add text: click the canvas to place (Esc to cancel)",
+      "undo": "Undo (Cmd+Z)",
+      "uploadFailed": "Failed {{count}}",
+      "uploading": "Uploading {{count}}…",
+      "zoomIn": "Zoom in (+)",
+      "zoomOut": "Zoom out (-)"
+    }
+  },
   "editorApp": {
     "deliver": "Deliver",
     "deliverRenderFirst": "Render and export the video in the editor first",

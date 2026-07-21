@@ -54,6 +54,188 @@
     "retry": "重试",
     "save": "保存"
   },
+  "editor": {
+    "assets": {
+      "fileTooLarge": "文件过大：{{name}}（上限 {{max}}MB）",
+      "importFailed": "导入失败：{{name}}",
+      "uploadFailed": "上传失败：{{name}}"
+    },
+    "canvas": {
+      "defaultText": "文本"
+    },
+    "captioning": {
+      "generateFailed": "字幕生成失败",
+      "generated": "字幕已生成"
+    },
+    "captionsPanel": {
+      "color": "颜色",
+      "font": "字体",
+      "fontSize": "字号",
+      "highlightColor": "高亮色",
+      "maxLines": "最大行数",
+      "pageDurationMs": "页时长ms",
+      "startMs": "起始 ms",
+      "style": "字幕样式",
+      "wordCorrection": "逐词修正"
+    },
+    "fields": {
+      "fadeIn": "淡入s",
+      "fadeOut": "淡出s"
+    },
+    "fontPicker": {
+      "noMatch": "无匹配字体",
+      "searchPlaceholder": "搜索字体…"
+    },
+    "inspector": {
+      "align": "对齐",
+      "alignBottom": "底对齐",
+      "alignCenterH": "水平居中",
+      "alignCenterV": "垂直居中",
+      "alignLeft": "左对齐",
+      "alignRight": "右对齐",
+      "alignTop": "顶对齐",
+      "borderRadius": "圆角",
+      "canvas": "画布",
+      "captions": "字幕",
+      "color": "颜色",
+      "crop": "裁剪",
+      "cropBottom": "下",
+      "cropH": "裁剪高",
+      "cropLeft": "左",
+      "cropOutOfRange": "播放头不在此元素的时间范围内",
+      "cropRight": "右",
+      "cropTop": "上",
+      "cropW": "裁剪宽",
+      "cropX": "裁剪X",
+      "cropY": "裁剪Y",
+      "download": "下载",
+      "duration": "时长",
+      "enterCrop": "进入裁剪",
+      "export": "导出",
+      "extractingAudio": "抽取音频中…",
+      "fade": "淡入淡出",
+      "failed": "失败",
+      "fill": "填充",
+      "generateCaptions": "生成字幕",
+      "layout": "布局",
+      "lockAspect": "锁定宽高比",
+      "opacity": "透明度",
+      "position": "位置",
+      "render": "渲染",
+      "reset": "重置",
+      "rotate90": "旋转 90°",
+      "rotation": "旋转",
+      "size": "尺寸",
+      "statusError": "上传失败",
+      "statusInProgress": "上传中…",
+      "statusPendingUpload": "等待上传",
+      "statusUploaded": "已上传",
+      "swapDimensions": "交换尺寸",
+      "transcribing": "转录中…",
+      "uploading": "上传中 {{progress}}%"
+    },
+    "itemBlock": {
+      "fadeIn": "淡入",
+      "fadeOut": "淡出",
+      "volume": "音量"
+    },
+    "mediaPanel": {
+      "audio": "音频",
+      "mute": "静音",
+      "speed": "速度",
+      "video": "视频",
+      "volume": "音量"
+    },
+    "persistence": {
+      "invalidProjectFile": "工程文件无效，无法恢复",
+      "saved": "已保存"
+    },
+    "playback": {
+      "fullscreen": "全屏",
+      "loop": "循环",
+      "mute": "静音",
+      "playPause": "播放/暂停 (空格)",
+      "skipToEnd": "跳到结尾",
+      "skipToStart": "跳到开头"
+    },
+    "render": {
+      "createFailed": "渲染任务创建失败",
+      "done": "渲染完成，可在渲染面板下载",
+      "failed": "渲染失败"
+    },
+    "selectionOverlay": {
+      "bringToFront": "置于顶层",
+      "copy": "复制",
+      "cut": "剪切",
+      "duplicate": "创建副本",
+      "sendToBack": "置于底层"
+    },
+    "textPanel": {
+      "align": "对齐",
+      "background": "背景",
+      "borderRadius": "圆角",
+      "color": "颜色",
+      "direction": "方向",
+      "enable": "启用",
+      "fontFamily": "字体",
+      "fontSize": "字号",
+      "fontWeight": "字重",
+      "letterSpacing": "字距",
+      "lineHeight": "行高",
+      "padding": "内边距",
+      "stroke": "描边",
+      "text": "文本",
+      "typography": "排版",
+      "width": "宽度"
+    },
+    "timeline": {
+      "bringToFront": "置于顶层",
+      "copy": "复制",
+      "cut": "剪切",
+      "duplicate": "创建副本",
+      "fit": "适应",
+      "fitTitle": "适应：缩放到完整时长可见",
+      "sendToBack": "置于底层",
+      "snapTitle": "吸附 (Shift+M)",
+      "snapTooltip": "吸附开关 (Shift+M)",
+      "split": "在播放头处分割 (S)",
+      "trackHideShow": "隐藏/显示",
+      "trackMute": "静音",
+      "zoom": "缩放",
+      "zoomIn": "放大",
+      "zoomOut": "缩小",
+      "zoomResetTitle": "点击回到适应"
+    },
+    "toolbar": {
+      "cancel": "取消",
+      "captionFailed": "转录失败 {{count}}",
+      "captioning": "转录中 {{count}}…",
+      "cleanupAssets": "清理素材({{count}})",
+      "cleanupDesc": "将永久删除 {{count}} 个已移除素材的远端对象与本地缓存，并清空撤销历史。此操作不可恢复。",
+      "cleanupTitle": "永久删除已移除的素材?",
+      "confirmDelete": "确认删除",
+      "downloadState": "下载工程文件 (.json)",
+      "downloadStateLabel": "下载状态",
+      "fit": "适应",
+      "fitCanvas": "适应画布 (0)",
+      "importAsset": "导入素材",
+      "importState": "导入状态",
+      "importStateTitle": "从 .json 文件恢复工程",
+      "playPause": "播放/暂停 (空格)",
+      "redo": "重做 (Cmd+Y)",
+      "save": "保存 (Cmd+S)",
+      "saveLabel": "保存",
+      "solid": "色块",
+      "solidTool": "绘制色块:在画布上拖拽画框（Esc 取消）",
+      "text": "文本",
+      "textTool": "添加文本:点击画布放置（Esc 取消）",
+      "undo": "撤销 (Cmd+Z)",
+      "uploadFailed": "失败 {{count}}",
+      "uploading": "上传中 {{count}}…",
+      "zoomIn": "放大 (+)",
+      "zoomOut": "缩小 (-)"
+    }
+  },
   "editorApp": {
     "deliver": "交付",
     "deliverRenderFirst": "请先在编辑器渲染导出成片",

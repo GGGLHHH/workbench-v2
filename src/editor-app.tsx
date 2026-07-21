@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useMemo, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useSearch } from '@tanstack/react-router'
 import { Clapperboard, Loader2, UploadCloud } from 'lucide-react'
@@ -31,14 +31,15 @@ const storage = {
   ...browser,
   saveProject: (state: UndoableState) => (projectRef.save ?? browser.saveProject)(state),
 }
-const deps = { transport, storage, notify: sonnerNotify }
+// 模块级基础 deps(无 t,与语言无关);带 t 的响应式 deps 在 EditorApp 里按语言组装。
+const baseDeps = { transport, storage, notify: sonnerNotify }
 
 // 无选中项目时的占位工程:localStorage 恢复,回退 demo。选中项目后由 EditorApp 重置成该工程。
 const initialState = (browser.loadProject() as UndoableState | null) ?? buildDemoState()
 // 导出:project-detail 的「加入编辑器」(add-to-editor)按需写入这个单例。
 export const editorStore = createEditorStore({ undoable: initialState })
 editorStore.setState({ lastSavedState: initialState })
-void restoreLocalUrls(editorStore, deps, initialState)
+void restoreLocalUrls(editorStore, baseDeps, initialState)
 const editorRefs = createInstanceRefs()
 
 if (import.meta.env.DEV) {
@@ -97,6 +98,22 @@ export function EditorApp() {
   const { project: id } = useSearch({ from: '/' })
   const detail = useProject(id ?? null)
   const saveMutate = useSaveProject().mutate
+  const { i18n } = useTranslation()
+
+  // 把 v2 的 i18n 注入 @gedatou/editor（库本身不做 i18n，只认 deps.t）：
+  // 库调 t('toolbar.undo') → 解析 v2 的 editor.toolbar.undo。v2 未覆盖的 key（exists=false）
+  // 返回原 key → 库回落它内置的 zh 默认（新版本加的文案不会显示成 raw key）。
+  // deps 随 i18n.language 重建 → deps context 更新 → 编辑器整体跟随 v2 语言切换。
+  const deps = useMemo(
+    () => ({
+      ...baseDeps,
+      t: (key: string, params?: Record<string, string | number>) => {
+        const full = `editor.${key}`
+        return i18n.exists(full) ? (i18n.t(full, params) as string) : key
+      },
+    }),
+    [i18n, i18n.language],
+  )
 
   // 保存函数随选中项目刷新(saveMutate 引用稳定)。库触发 saveProject → PUT /bff/projects/:id。
   useEffect(() => {
@@ -114,7 +131,7 @@ export function EditorApp() {
     loadedIdRef.current = id ?? null
     // renderingTasks 也清:换项目后旧渲染产物不应被误交付到新项目
     editorStore.setState({ undoable: state, lastSavedState: state, past: [], future: [], selectedItemIds: [], renderingTasks: [] })
-    void restoreLocalUrls(editorStore, deps, state)
+    void restoreLocalUrls(editorStore, baseDeps, state)
     // ponytail: 直接重置会丢弃未保存改动(gotcha #5,脏检查/切换确认待产品拍板后单独接)
   }, [id, state])
 
