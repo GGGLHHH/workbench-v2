@@ -5,8 +5,13 @@ import { Clapperboard, Loader2, UploadCloud } from 'lucide-react'
 import { toast } from 'sonner'
 import type { UndoableState } from '@gedatou/shared'
 import {
+  Canvas,
   Editor,
+  EditorContainer,
   EditorProvider,
+  Inspector,
+  PlaybackBar,
+  Timeline,
   createEditorStore,
   createInstanceRefs,
   restoreLocalUrls,
@@ -139,7 +144,7 @@ export function EditorApp() {
   // 本地 JSON 存取无意义),发布/交付作为宿主自定义按钮放进工具栏右侧。
   return (
     <EditorProvider store={editorStore} refs={editorRefs} deps={deps}>
-      <Editor.Container>
+      <EditorContainer>
         <Editor.Toolbar>
           <Editor.Title />
           <Editor.UndoButton />
@@ -159,14 +164,14 @@ export function EditorApp() {
           </div>
         </Editor.Toolbar>
         <div className="flex min-h-0 flex-1">
-          <Editor.Canvas />
+          <Canvas />
           <aside className="w-[349px] shrink-0 overflow-y-auto border-l border-border text-sm">
-            <Editor.Inspector />
+            <Inspector />
           </aside>
         </div>
-        <Editor.PlaybackBar />
-        <Editor.Timeline />
-      </Editor.Container>
+        <PlaybackBar />
+        <Timeline />
+      </EditorContainer>
     </EditorProvider>
   )
 }
