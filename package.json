@@ -5,8 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "server": "tsx watch server/src/index.ts",
-    "bff": "tsx watch bff/src/index.ts",
+    "server": "tsx watch --env-file-if-exists=.env server/src/index.ts",
+    "bff": "tsx watch --env-file-if-exists=.env bff/src/index.ts",
     "build": "vite build",
     "preview": "vite preview",
     "typecheck": "tsc -b",

@@ -2,7 +2,9 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
-const port = Number(process.env.PORT ?? 3011);
+// 端口来自根 .env 的 RENDER_PORT(单一真相源,见 .env.example)。用 RENDER_PORT 而非泛型 PORT,
+// 免得和其它工具塞进环境的 PORT 撞车,导致 server 起在意料外的口、BFF 又转发到旧口。
+const port = Number(process.env.RENDER_PORT ?? 3011);
 
 /** 本地渲染服务器配置：无 S3/minio，素材与产物落盘 dataDir，对外走 <publicBaseUrl>/media。 */
 export const config = {

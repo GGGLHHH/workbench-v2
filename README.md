@@ -24,16 +24,17 @@
 
 ## 运行
 
-需三个进程(三个终端):
+端口全在根 `.env`(单一真相源,见 `.env.example`)。需三个进程(三个终端):
 
 ```bash
 pnpm install
-pnpm server   # 渲染服务(下游) :3011（首次渲染会自动下载 headless chrome）
-pnpm bff      # BFF(前端入口) :4100（/api 代理到 :3011，自有 /bff/*）
-pnpm dev      # 编辑器 :5273（/api + /bff 代理到 :4100）
+cp .env.example .env   # 三服务端口都从这一份读;改端口只改这里
+pnpm server   # 渲染服务(下游) RENDER_PORT=3011（首次渲染会自动下载 headless chrome）
+pnpm bff      # BFF(前端入口) BFF_PORT=4100（/api 代理到 server,自有 /bff/*）
+pnpm dev      # 编辑器 WEB_PORT=5173（/api + /bff 代理到 BFF）
 ```
 
-拓扑:`编辑器 :5273 → BFF :4100 →(代理)→ 渲染服务 :3011`;素材/产物走 `:3011/media` 直连。详见 `bff/README.md`。
+拓扑:`编辑器 :5173 → BFF :4100 →(代理)→ 渲染服务 :3011`(默认口);素材/产物走 `server/media` 直连。详见 `bff/README.md`。
 
 ## 关键决策
 
