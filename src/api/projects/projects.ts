@@ -16,6 +16,7 @@ import type {
   BffProjectMetaRequest,
   BffProjectPage,
   BffProjectSaveRequest,
+  BffTag,
 } from '@/generated/api-types'
 import {
   changeBffProjectStatus,
@@ -392,8 +393,8 @@ export function useSaveProjectAssignee() {
 // 乐观改 detail.assets[].tags:标签是灯箱里即时反馈的东西,等一个往返会明显发木。
 export function useSaveAssetTags() {
   return useMutation({
-    mutationFn: ({ projectId, assetId, tags }: { projectId: string; assetId: string; tags: string[] }) =>
-      saveBffAssetTags({ path: { id: projectId, assetId }, body: { tags } }),
+    mutationFn: ({ projectId, assetId, tags }: { projectId: string; assetId: string; tags: BffTag[] }) =>
+      saveBffAssetTags({ path: { id: projectId, assetId }, body: { tagIds: tags.map((t) => t.id) } }),
     onMutate: async ({ projectId, assetId, tags }) => {
       const key = queryKeys.projects.detail(projectId)
       await queryClient.cancelQueries({ queryKey: key })

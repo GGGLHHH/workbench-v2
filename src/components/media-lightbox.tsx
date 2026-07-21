@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Dialog as DialogPrimitive } from '@base-ui/react/dialog'
 import { ChevronLeft, ChevronRight, Download, X } from 'lucide-react'
 
+import type { BffTag } from '@/generated/api-types'
 import { cn, fileSize } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 
@@ -18,7 +19,7 @@ export type ViewerItem = {
   sizeBytes?: number | null
   id?: string
   group?: string
-  tags?: string[]
+  tags?: BffTag[]
   commentCount?: number
 }
 

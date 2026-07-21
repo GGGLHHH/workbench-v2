@@ -226,6 +226,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/bff/tags": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["listBffTags"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/bff/projects/{id}/assets/{assetId}/tags": {
         parameters: {
             query?: never;
@@ -308,6 +324,17 @@ export interface components {
                 [key: string]: number;
             };
         };
+        BffTag: {
+            id: string;
+            name: string;
+            displayName: string;
+        };
+        BffTagPage: {
+            items: components["schemas"]["BffTag"][];
+            total: number;
+            limit: number;
+            offset: number;
+        };
         BffProjectAsset: {
             id: string;
             group: string;
@@ -316,7 +343,7 @@ export interface components {
             kind: string;
             name?: null | string;
             commentCount: number;
-            tags?: string[];
+            tags?: components["schemas"]["BffTag"][];
             adminReview?: null | string;
             assigneeReview?: null | string;
             sizeBytes?: null | number;
@@ -468,7 +495,10 @@ export interface components {
             assigneeId: null | string;
         };
         BffAssetTagsRequest: {
-            tags: string[];
+            tagIds: string[];
+        };
+        BffAssetTagsResponse: {
+            tags: components["schemas"]["BffTag"][];
         };
         BffVisibilityRequest: {
             /** @enum {string} */
@@ -492,6 +522,8 @@ export type BffSession = components['schemas']['BffSession'];
 export type BffLoginRequest = components['schemas']['BffLoginRequest'];
 export type BffProjectSummary = components['schemas']['BffProjectSummary'];
 export type BffProjectStats = components['schemas']['BffProjectStats'];
+export type BffTag = components['schemas']['BffTag'];
+export type BffTagPage = components['schemas']['BffTagPage'];
 export type BffProjectAsset = components['schemas']['BffProjectAsset'];
 export type BffOption = components['schemas']['BffOption'];
 export type BffProjectOptions = components['schemas']['BffProjectOptions'];
@@ -512,6 +544,7 @@ export type BffUploadTicket = components['schemas']['BffUploadTicket'];
 export type BffAssigneeRequest = components['schemas']['BffAssigneeRequest'];
 export type BffAssigneeResponse = components['schemas']['BffAssigneeResponse'];
 export type BffAssetTagsRequest = components['schemas']['BffAssetTagsRequest'];
+export type BffAssetTagsResponse = components['schemas']['BffAssetTagsResponse'];
 export type BffVisibilityRequest = components['schemas']['BffVisibilityRequest'];
 export type BffStatusActionRequest = components['schemas']['BffStatusActionRequest'];
 export type BffProjectStatusResponse = components['schemas']['BffProjectStatusResponse'];
@@ -997,6 +1030,30 @@ export interface operations {
             };
         };
     };
+    listBffTags: {
+        parameters: {
+            query?: {
+                search?: string;
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Default Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BffTagPage"];
+                };
+            };
+        };
+    };
     saveBffAssetTags: {
         parameters: {
             query?: never;
@@ -1019,7 +1076,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["BffAssetTagsRequest"];
+                    "application/json": components["schemas"]["BffAssetTagsResponse"];
                 };
             };
         };
@@ -1085,6 +1142,7 @@ export type ListBffAssetCommentsQuery = operations['listBffAssetComments']['para
 export type ListBffProjectCommentsPath = operations['listBffProjectComments']['parameters']['path'];
 export type ListBffProjectCommentsQuery = operations['listBffProjectComments']['parameters']['query'];
 export type ListBffProjectsQuery = operations['listBffProjects']['parameters']['query'];
+export type ListBffTagsQuery = operations['listBffTags']['parameters']['query'];
 export type LogoutBffSessionResponse = operations['logoutBffSession']['responses'][200]['content']['application/json'];
 export type SaveBffAssetTagsPath = operations['saveBffAssetTags']['parameters']['path'];
 export type SaveBffCommentPath = operations['saveBffComment']['parameters']['path'];

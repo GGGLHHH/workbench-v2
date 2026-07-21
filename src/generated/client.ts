@@ -3,8 +3,8 @@
 
 import type { ApiRequestOptions } from "@/lib/api-client";
 import { requestJson, requestVoid } from "@/lib/api-client";
-import type { BffAssetTagsRequest, BffAssigneeRequest, BffAssigneeResponse, BffComment, BffCommentPage, BffCommentRequest, BffLoginRequest, BffProject, BffProjectAnalytics, BffProjectMetaRequest, BffProjectMetaResponse, BffProjectOptions, BffProjectPage, BffProjectSaveRequest, BffProjectSaveResponse, BffProjectStats, BffProjectStatusResponse, BffSession, BffStatusActionRequest, BffUploadRequest, BffUploadTicket, BffVisibilityRequest, ChangeBffProjectStatusPath, CompleteBffUploadPath, CompleteBffUploadResponse, CreateBffAssetCommentPath, CreateBffProjectCommentPath, DeleteBffCommentPath, DeleteBffCommentResponse, GetBffProjectAnalyticsPath, GetBffProjectPath, ListBffAssetCommentsPath, ListBffAssetCommentsQuery, ListBffProjectCommentsPath, ListBffProjectCommentsQuery, ListBffProjectsQuery, LogoutBffSessionResponse, SaveBffAssetTagsPath, SaveBffCommentPath, SaveBffProjectAssigneePath, SaveBffProjectMetaPath, SaveBffProjectPath, SaveBffProjectVisibilityPath } from "./api-types";
-import { saveBffComment as buildSaveBffCommentPath, deleteBffComment as buildDeleteBffCommentPath, listBffAssetComments as buildListBffAssetCommentsPath, createBffAssetComment as buildCreateBffAssetCommentPath, getBffProjectOptions as buildGetBffProjectOptionsPath, listBffProjects as buildListBffProjectsPath, getBffProjectStats as buildGetBffProjectStatsPath, getBffProject as buildGetBffProjectPath, saveBffProject as buildSaveBffProjectPath, getBffProjectAnalytics as buildGetBffProjectAnalyticsPath, saveBffAssetTags as buildSaveBffAssetTagsPath, saveBffProjectAssignee as buildSaveBffProjectAssigneePath, listBffProjectComments as buildListBffProjectCommentsPath, createBffProjectComment as buildCreateBffProjectCommentPath, saveBffProjectMeta as buildSaveBffProjectMetaPath, changeBffProjectStatus as buildChangeBffProjectStatusPath, saveBffProjectVisibility as buildSaveBffProjectVisibilityPath, getBffSession as buildGetBffSessionPath, loginBffSession as buildLoginBffSessionPath, logoutBffSession as buildLogoutBffSessionPath, refreshBffSession as buildRefreshBffSessionPath, createBffUpload as buildCreateBffUploadPath, completeBffUpload as buildCompleteBffUploadPath } from "./api";
+import type { BffAssetTagsRequest, BffAssetTagsResponse, BffAssigneeRequest, BffAssigneeResponse, BffComment, BffCommentPage, BffCommentRequest, BffLoginRequest, BffProject, BffProjectAnalytics, BffProjectMetaRequest, BffProjectMetaResponse, BffProjectOptions, BffProjectPage, BffProjectSaveRequest, BffProjectSaveResponse, BffProjectStats, BffProjectStatusResponse, BffSession, BffStatusActionRequest, BffTagPage, BffUploadRequest, BffUploadTicket, BffVisibilityRequest, ChangeBffProjectStatusPath, CompleteBffUploadPath, CompleteBffUploadResponse, CreateBffAssetCommentPath, CreateBffProjectCommentPath, DeleteBffCommentPath, DeleteBffCommentResponse, GetBffProjectAnalyticsPath, GetBffProjectPath, ListBffAssetCommentsPath, ListBffAssetCommentsQuery, ListBffProjectCommentsPath, ListBffProjectCommentsQuery, ListBffProjectsQuery, ListBffTagsQuery, LogoutBffSessionResponse, SaveBffAssetTagsPath, SaveBffCommentPath, SaveBffProjectAssigneePath, SaveBffProjectMetaPath, SaveBffProjectPath, SaveBffProjectVisibilityPath } from "./api-types";
+import { saveBffComment as buildSaveBffCommentPath, deleteBffComment as buildDeleteBffCommentPath, listBffAssetComments as buildListBffAssetCommentsPath, createBffAssetComment as buildCreateBffAssetCommentPath, getBffProjectOptions as buildGetBffProjectOptionsPath, listBffProjects as buildListBffProjectsPath, getBffProjectStats as buildGetBffProjectStatsPath, getBffProject as buildGetBffProjectPath, saveBffProject as buildSaveBffProjectPath, getBffProjectAnalytics as buildGetBffProjectAnalyticsPath, saveBffAssetTags as buildSaveBffAssetTagsPath, saveBffProjectAssignee as buildSaveBffProjectAssigneePath, listBffProjectComments as buildListBffProjectCommentsPath, createBffProjectComment as buildCreateBffProjectCommentPath, saveBffProjectMeta as buildSaveBffProjectMetaPath, changeBffProjectStatus as buildChangeBffProjectStatusPath, saveBffProjectVisibility as buildSaveBffProjectVisibilityPath, getBffSession as buildGetBffSessionPath, loginBffSession as buildLoginBffSessionPath, logoutBffSession as buildLogoutBffSessionPath, refreshBffSession as buildRefreshBffSessionPath, listBffTags as buildListBffTagsPath, createBffUpload as buildCreateBffUploadPath, completeBffUpload as buildCompleteBffUploadPath } from "./api";
 type RuntimeRequestOptions = Omit<ApiRequestOptions, "json" | "method" | "searchParams" | "signal">;
 function buildSearchParams(query: Record<string, unknown> | undefined): URLSearchParams | undefined {
     if (query === undefined)
@@ -170,8 +170,8 @@ export interface SaveBffAssetTagsOptions {
     body: BffAssetTagsRequest;
     signal?: AbortSignal;
 }
-export function saveBffAssetTags(options: SaveBffAssetTagsOptions, requestOptions: RuntimeRequestOptions = {}): Promise<BffAssetTagsRequest> {
-    return requestJson<BffAssetTagsRequest>(buildSaveBffAssetTagsPath(options.path), {
+export function saveBffAssetTags(options: SaveBffAssetTagsOptions, requestOptions: RuntimeRequestOptions = {}): Promise<BffAssetTagsResponse> {
+    return requestJson<BffAssetTagsResponse>(buildSaveBffAssetTagsPath(options.path), {
         ...requestOptions,
         method: "PUT",
         json: options.body,
@@ -312,6 +312,20 @@ export function refreshBffSession(options: RefreshBffSessionOptions, requestOpti
     return requestJson<BffSession>(buildRefreshBffSessionPath(), {
         ...requestOptions,
         method: "POST",
+        signal: options.signal
+    });
+}
+export interface ListBffTagsOptions {
+    query?: ListBffTagsQuery;
+    path?: never;
+    body?: never;
+    signal?: AbortSignal;
+}
+export function listBffTags(options: ListBffTagsOptions, requestOptions: RuntimeRequestOptions = {}): Promise<BffTagPage> {
+    return requestJson<BffTagPage>(buildListBffTagsPath(), {
+        ...requestOptions,
+        method: "GET",
+        searchParams: buildSearchParams(options.query),
         signal: options.signal
     });
 }

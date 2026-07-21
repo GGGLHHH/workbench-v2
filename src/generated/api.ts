@@ -66,6 +66,9 @@ export function logoutBffSession(): string {
 export function refreshBffSession(): string {
     return "/bff/session/refresh";
 }
+export function listBffTags(): string {
+    return "/bff/tags";
+}
 export function createBffUpload(): string {
     return "/bff/uploads";
 }

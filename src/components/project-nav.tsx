@@ -1088,7 +1088,7 @@ function AssetGrid({ projectId, assets }: { projectId: string; assets: NonNullab
                   key={a.id}
                   type="button"
                   onClick={(e) => viewer.open(assets.indexOf(a), e)}
-                  title={[a.name, a.tags?.join(', ')].filter(Boolean).join(' · ') || undefined}
+                  title={[a.name, a.tags?.map((t) => t.displayName || t.name).join(', ')].filter(Boolean).join(' · ') || undefined}
                   className="relative aspect-square overflow-hidden rounded-md ring-offset-background hover:ring-2 hover:ring-ring focus-visible:ring-2 focus-visible:ring-ring"
                 >
                   {/* 有海报就贴海报 —— 一张图比让 20 个 <video> 各自拉 metadata 便宜得多 */}

@@ -24,12 +24,13 @@ import {
   listProjectAssetsComments,
   listProjectComments,
   listProjects,
+  listTags,
   listUserOptions,
   prepareProject,
   publishProject,
   reassignProject,
   rejectProject,
-  replaceProjectAssetTagsBatch,
+  replaceProjectAssetTags,
   resubmitProject,
   revertProject,
   startProjectReview,
@@ -165,7 +166,12 @@ const toSummary = (p: any) => {
 // TopBar 摘要:listing 三段 / 三格 beds-baths-sqft / 人员三选 / 统计 / 时间)。
 // 单独成 detail 子对象:BffProject 顶层的 state 是时间轴,而 listing 的 state 是「州」,平铺会撞名。
 // 只读:xchangeai 那套 PATCH meta 这里还没开,编辑要另开端点。
-// 资产列表 → 缩略图网格用的扁平项。tags 取名字数组(对齐 workbench 图库瓦片上的标签)。
+// tag 目录实体 → 前端项。upstream TagModel 是 snake_case,拍平成 camelCase 的 {id,name,displayName}。
+type BffTag = { id: string; name: string; displayName: string }
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const toTag = (t: any): BffTag => ({ id: t?.id ?? '', name: t?.name ?? '', displayName: t?.display_name || t?.name || '' })
+
+// 资产列表 → 缩略图网格用的扁平项。tags 为绑定的 tag 目录实体(见下)。
 // 拿不到 URL 的也照样返回(url 为空串):以前 flatMap 把它们静默丢了,于是网格标题的
 // "Resources (10)" 和统计行的 "12 resources" 互相打脸。前端 Thumb 对空 url 本就有占位。
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -180,8 +186,10 @@ const toAssets = (list: any[] | null | undefined, kind: 'creator' | 'agent') =>
       kind: m?.kind ?? 'image',
       name: a.content?.file_name ?? null,
       commentCount: a.comment_count ?? 0,
+      // 房间标签是正式的 tag 目录实体(id + 规范名 name + 展示名 display_name),灯箱里用
+      // 无限下拉从目录绑定;带上 id 前端才能回填「已选」并按 tag_ids 写回(见 saveBffAssetTags)。
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      tags: (a.tags ?? []).map((tag: any) => tag.name).filter(Boolean),
+      tags: (a.tags ?? []).map((tag: any) => toTag(tag)).filter((t: BffTag) => t.id),
       // 审核双签:管理员与被指派创作者各投一票,两者都 approved 才算过。
       // 只有 agent_assets 有这两栏 —— creator 上传的原始素材不进审核。
       adminReview: a.admin_review_status ?? null,
@@ -303,6 +311,27 @@ export const registerProjectRoutes = (app: FastifyInstance): void => {
   });
   const nullable = (type: 'string' | 'number') => ({ type: [type, 'null'] } as const);
   app.addSchema({
+    $id: 'BffTag',
+    type: 'object',
+    required: ['id', 'name', 'displayName'],
+    properties: {
+      id: { type: 'string' },
+      name: { type: 'string' }, // 规范名(slug,如 living_room),写回/去重用
+      displayName: { type: 'string' }, // 展示名(如 Living room)
+    },
+  });
+  app.addSchema({
+    $id: 'BffTagPage',
+    type: 'object',
+    required: ['items', 'total', 'limit', 'offset'],
+    properties: {
+      items: { type: 'array', items: { $ref: 'BffTag#' } },
+      total: { type: 'integer' },
+      limit: { type: 'integer' },
+      offset: { type: 'integer' },
+    },
+  });
+  app.addSchema({
     $id: 'BffProjectAsset',
     type: 'object',
     required: ['id', 'group', 'url', 'kind', 'commentCount'],
@@ -314,7 +343,7 @@ export const registerProjectRoutes = (app: FastifyInstance): void => {
       kind: { type: 'string' }, // image | video(按 mime 判,与有无海报无关)
       name: nullable('string'),
       commentCount: { type: 'integer' },
-      tags: { type: 'array', items: { type: 'string' } },
+      tags: { type: 'array', items: { $ref: 'BffTag#' } },
       adminReview: nullable('string'), // pending | approved | rejected(仅 agent 资产)
       assigneeReview: nullable('string'),
       sizeBytes: nullable('number'),
@@ -549,8 +578,14 @@ export const registerProjectRoutes = (app: FastifyInstance): void => {
   app.addSchema({
     $id: 'BffAssetTagsRequest',
     type: 'object',
+    required: ['tagIds'],
+    properties: { tagIds: { type: 'array', items: { type: 'string' } } },
+  });
+  app.addSchema({
+    $id: 'BffAssetTagsResponse',
+    type: 'object',
     required: ['tags'],
-    properties: { tags: { type: 'array', items: { type: 'string' } } },
+    properties: { tags: { type: 'array', items: { $ref: 'BffTag#' } } },
   });
   app.addSchema({
     $id: 'BffVisibilityRequest',
@@ -922,9 +957,40 @@ export const registerProjectRoutes = (app: FastifyInstance): void => {
     },
   )
 
-  // 资产房间标签(对齐 workbench 的 TagEditor)。走 batch 端点是因为它按 **名字** 全量覆盖并
-  // 自动建标签;单资产那个 (PUT .../assets/:id/tags) 只收 tag_ids,前端还得先查目录换 id。
-  app.put<{ Params: { id: string; assetId: string }; Body: { tags: string[] } }>(
+  // tag 目录(分页 + 搜索)。灯箱里的房间标签选择器无限下拉、按名字搜,从这里拉「已有」标签;
+  // v2 不开放建标签,故只包 list、不包 create/unique。上游返回 PageResponseTagModel。
+  app.get<{ Querystring: { search?: string; limit?: number; offset?: number } }>(
+    '/bff/tags',
+    {
+      schema: {
+        operationId: 'listBffTags',
+        tags: ['bff'],
+        querystring: {
+          type: 'object',
+          properties: {
+            search: { type: 'string' },
+            limit: { type: 'integer' },
+            offset: { type: 'integer' },
+          },
+        },
+        response: { 200: { $ref: 'BffTagPage#' } },
+      },
+    },
+    async (req) => {
+      const { search, limit, offset } = req.query
+      const page = await listTags({ query: { search, limit, offset } }, forwardAuth(req))
+      return {
+        items: (page.items ?? []).map(toTag),
+        total: page.total ?? 0,
+        limit: page.limit ?? limit ?? 20,
+        offset: page.offset ?? offset ?? 0,
+      }
+    },
+  )
+
+  // 资产房间标签:从 tag 目录选好 id 后按 tag_ids 全量覆盖(单资产端点)。前端在下拉里已拿到
+  // 目录 id,不必再走 batch 的 by-name 自动建标签那条路。返回覆盖后的标签实体供前端校正乐观值。
+  app.put<{ Params: { id: string; assetId: string }; Body: { tagIds: string[] } }>(
     '/bff/projects/:id/assets/:assetId/tags',
     {
       schema: {
@@ -936,19 +1002,16 @@ export const registerProjectRoutes = (app: FastifyInstance): void => {
           properties: { id: { type: 'string' }, assetId: { type: 'string' } },
         },
         body: { $ref: 'BffAssetTagsRequest#' },
-        response: { 200: { $ref: 'BffAssetTagsRequest#' } },
+        response: { 200: { $ref: 'BffAssetTagsResponse#' } },
       },
     },
     async (req) => {
       const { id, assetId } = req.params
-      const result = await replaceProjectAssetTagsBatch(
-        { path: { id }, body: { assets: [{ asset_id: assetId, tag_names: req.body.tags }] } },
+      const page = await replaceProjectAssetTags(
+        { path: { id, asset_id: assetId }, body: { tag_ids: req.body.tagIds } },
         forwardAuth(req),
       )
-      // 回服务端的规范名而不是入参:上游会把 "living room" 折成 "living_room",
-      // 回显入参的话前端乐观值就一直停在未规范的写法,直到下次拉详情才悄悄变样。
-      const tags = (result.assets ?? []).find((a) => a.asset_id === assetId)?.tags
-      return { tags: tags ? tags.map((t) => t.name) : req.body.tags }
+      return { tags: (page.items ?? []).map(toTag) }
     },
   )
 

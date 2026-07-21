@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
 import { mediaKind } from '../bff/src/media'
-import { addTag } from './components/asset-viewer'
 import { fileSize } from './lib/utils'
 
 // 只覆盖「有分支、且已经真的错过一次」的纯逻辑 —— 不是为覆盖率凑数。
@@ -27,36 +26,6 @@ describe('mediaKind', () => {
     expect(mediaKind(null)).toBe('file')
     expect(mediaKind(undefined)).toBe('file')
     expect(mediaKind('')).toBe('file')
-  })
-})
-
-describe('addTag', () => {
-  it('trim + 折叠连续空白 + 截断到 40 字符', () => {
-    expect(addTag([], '  kitchen  ')).toEqual(['kitchen'])
-    expect(addTag([], 'living    room')).toEqual(['living room'])
-    expect(addTag([], 'x'.repeat(50))).toEqual(['x'.repeat(40)])
-  })
-
-  it('忽略空输入', () => {
-    expect(addTag(['a'], '')).toEqual(['a'])
-    expect(addTag(['a'], '   ')).toEqual(['a'])
-  })
-
-  it('去重时忽略大小写', () => {
-    expect(addTag(['kitchen'], 'Kitchen')).toEqual(['kitchen'])
-    expect(addTag(['kitchen'], 'KITCHEN')).toEqual(['kitchen'])
-  })
-
-  it('到上限后不再追加', () => {
-    const full = ['a', 'b', 'c', 'd', 'e']
-    expect(addTag(full, 'f')).toEqual(full)
-  })
-
-  // 返回原数组(而非新数组)是调用方判断「有没有变」的依据:commit 里靠 next !== tags 决定要不要发请求
-  it('没变化时返回同一个数组引用', () => {
-    const tags = ['kitchen']
-    expect(addTag(tags, 'Kitchen')).toBe(tags)
-    expect(addTag(tags, '  ')).toBe(tags)
   })
 })
 

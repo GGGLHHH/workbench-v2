@@ -33,4 +33,9 @@ export const queryKeys = {
     // 分析:独立子键,不被列表/详情失效波及(它按天聚合,刷得再勤也不会变)
     analytics: (id: string) => [...projectsRoot, 'analytics', id] as const,
   },
+  // tag 目录:全局一份、与项目无关(房间标签选择器的无限下拉按 search 分页)。
+  tags: {
+    all: ['bff', 'tags'] as const,
+    infinite: (search?: string) => ['bff', 'tags', 'infinite', search ?? ''] as const,
+  },
 }
