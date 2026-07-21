@@ -1136,42 +1136,81 @@ function Row({ label, children }: { label: string; children: React.ReactNode }) 
 
 const num = (v: string) => (v.trim() === '' ? null : Number(v))
 
+// 编辑表单草稿(全字符串,贴合 <input>)。状态提在 DetailContent:乐观保存会立刻关表单,
+// 失败要原样重开 —— 草稿若留在 MetaForm 内部,一卸载就没了。detail↔draft↔meta 两个纯转换。
+type MetaDraft = {
+  listingUrl: string
+  address: string
+  address2: string
+  city: string
+  state: string
+  postalCode: string
+  propertyType: string
+  price: string
+  videoStyle: string
+  bedrooms: string
+  bathrooms: string
+  livingAreaSqft: string
+  agencyId: string
+  agentId: string
+  assigneeId: string
+}
+
+const detailToDraft = (d: BffProjectDetail): MetaDraft => ({
+  listingUrl: d.listingUrl ?? '',
+  address: d.address ?? '',
+  address2: d.address2 ?? '',
+  city: d.city ?? '',
+  state: d.state ?? '',
+  postalCode: d.postalCode ?? '',
+  propertyType: d.propertyType ?? '',
+  price: d.price?.toString() ?? '',
+  videoStyle: d.videoStyle ?? '',
+  bedrooms: d.bedrooms?.toString() ?? '',
+  bathrooms: d.bathrooms?.toString() ?? '',
+  livingAreaSqft: d.livingAreaSqft?.toString() ?? '',
+  agencyId: d.agencyId ?? '',
+  agentId: d.agentId ?? '',
+  assigneeId: d.assigneeId ?? '',
+})
+
+const draftToMeta = (v: MetaDraft): BffProjectMetaRequest => ({
+  listingUrl: v.listingUrl.trim(),
+  address: v.address.trim(),
+  address2: v.address2.trim(),
+  city: v.city.trim(),
+  state: v.state.trim(),
+  postalCode: v.postalCode.trim(),
+  propertyType: v.propertyType.trim(),
+  videoStyle: v.videoStyle.trim(),
+  price: Number(v.price) || 0,
+  bedrooms: num(v.bedrooms),
+  bathrooms: num(v.bathrooms),
+  livingAreaSqft: num(v.livingAreaSqft),
+  agencyId: v.agencyId || null,
+  agentId: v.agentId || null,
+  assigneeId: v.assigneeId || null,
+})
+
 // 编辑表单:1:1 对齐 xchangeai-workbench 的 ProjectMetaPanel(字段、顺序、行分组、下拉、
 // Cancel/Save details)。下游是 PUT 整体替换,所以表单持有全量值一起提交。
 function MetaForm({
-  detail,
+  value: v,
+  onChange,
   options,
   optionsLoading,
-  saving,
   onCancel,
   onSave,
 }: {
-  detail: BffProjectDetail
+  value: MetaDraft
+  onChange: (v: MetaDraft) => void
   options: BffProjectOptions | undefined
   optionsLoading: boolean
-  saving: boolean
   onCancel: () => void
-  onSave: (meta: BffProjectMetaRequest) => void
+  onSave: () => void
 }) {
-  const [v, setV] = useState({
-    listingUrl: detail.listingUrl ?? '',
-    address: detail.address ?? '',
-    address2: detail.address2 ?? '',
-    city: detail.city ?? '',
-    state: detail.state ?? '',
-    postalCode: detail.postalCode ?? '',
-    propertyType: detail.propertyType ?? '',
-    price: detail.price?.toString() ?? '',
-    videoStyle: detail.videoStyle ?? '',
-    bedrooms: detail.bedrooms?.toString() ?? '',
-    bathrooms: detail.bathrooms?.toString() ?? '',
-    livingAreaSqft: detail.livingAreaSqft?.toString() ?? '',
-    agencyId: detail.agencyId ?? '',
-    agentId: detail.agentId ?? '',
-    assigneeId: detail.assigneeId ?? '',
-  })
-  const set = (k: keyof typeof v) => (e: { target: { value: string } }) =>
-    setV((cur) => ({ ...cur, [k]: e.target.value }))
+  const set = (k: keyof MetaDraft) => (e: { target: { value: string } }) =>
+    onChange({ ...v, [k]: e.target.value })
 
   const selects = [
     { key: 'agencyId', label: 'Agency', empty: 'No agency', items: options?.agencies },
@@ -1184,24 +1223,7 @@ function MetaForm({
       className="flex flex-col gap-3"
       onSubmit={(e) => {
         e.preventDefault()
-        if (saving) return
-        onSave({
-          listingUrl: v.listingUrl.trim(),
-          address: v.address.trim(),
-          address2: v.address2.trim(),
-          city: v.city.trim(),
-          state: v.state.trim(),
-          postalCode: v.postalCode.trim(),
-          propertyType: v.propertyType.trim(),
-          videoStyle: v.videoStyle.trim(),
-          price: Number(v.price) || 0,
-          bedrooms: num(v.bedrooms),
-          bathrooms: num(v.bathrooms),
-          livingAreaSqft: num(v.livingAreaSqft),
-          agencyId: v.agencyId || null,
-          agentId: v.agentId || null,
-          assigneeId: v.assigneeId || null,
-        })
+        onSave()
       }}
     >
       <Row label="Listing URL">
@@ -1267,11 +1289,11 @@ function MetaForm({
         </Row>
       ))}
       <div className="flex justify-end gap-2 pt-1">
-        <Button type="button" variant="ghost" size="sm" className="h-8" disabled={saving} onClick={onCancel}>
+        <Button type="button" variant="ghost" size="sm" className="h-8" onClick={onCancel}>
           Cancel
         </Button>
-        <Button type="submit" size="sm" className="h-8 gap-1" disabled={saving}>
-          {saving ? <Loader2 className="size-3.5 animate-spin" /> : null} Save details
+        <Button type="submit" size="sm" className="h-8">
+          Save details
         </Button>
       </div>
     </form>
@@ -1296,6 +1318,8 @@ function DetailContent({
   statusBusy: boolean
 }) {
   const [editing, setEditing] = useState(false)
+  // 草稿提在这层(见 MetaDraft):乐观保存立刻关表单,失败原样重开都不丢用户输入。
+  const [draft, setDraft] = useState<MetaDraft | null>(null)
   const options = useProjectOptions(visible && editing)
   const saveMeta = useSaveProjectMeta()
   const saveVisibility = useSaveProjectVisibility()
@@ -1320,7 +1344,15 @@ function DetailContent({
         <Info className="size-4" />
         <span className="flex-1 truncate text-sm font-medium">详情</span>
         {d && !editing ? (
-          <Button variant="ghost" size="sm" className="h-7 gap-1 px-2 text-xs" onClick={() => setEditing(true)}>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-7 gap-1 px-2 text-xs"
+            onClick={() => {
+              setDraft(detailToDraft(d))
+              setEditing(true)
+            }}
+          >
             <Pencil className="size-3.5" /> 编辑
           </Button>
         ) : null}
@@ -1334,17 +1366,22 @@ function DetailContent({
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
               <Loader2 className="size-4 animate-spin" /> 加载中…
             </div>
-          ) : editing ? (
+          ) : editing && draft ? (
             <MetaForm
-              key={project.id}
-              detail={d}
+              value={draft}
+              onChange={setDraft}
               options={options.data}
               optionsLoading={options.isPending}
-              saving={saveMeta.isPending}
               onCancel={() => setEditing(false)}
-              onSave={(meta) =>
-                saveMeta.mutate({ id: project.id, meta }, { onSuccess: () => setEditing(false) })
-              }
+              // 乐观:立刻关表单(onMutate 已把草稿值 patch 进 detail 缓存,只读视图即时显示);
+              // 失败时 onError 重开表单 —— 草稿提在本层没丢,原样恢复让用户改了重试。
+              onSave={() => {
+                setEditing(false)
+                saveMeta.mutate(
+                  { id: project.id, meta: draftToMeta(draft) },
+                  { onError: () => setEditing(true) },
+                )
+              }}
             />
           ) : (
             <div className="flex flex-col gap-4">

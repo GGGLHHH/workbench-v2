@@ -137,19 +137,31 @@ export function useProjectOptions(enabled: boolean) {
   })
 }
 
-// 保存项目元数据。返回的就是新 detail → 直接落缓存,不重拉(对齐乐观更新范式:用返回值校正)。
-// 地址字段会改标题,故列表也要跟着刷新(标题/摘要来自同一份 xchangeai 数据)。
+// 保存项目元数据。乐观:meta 字段与 detail 同名同义 → onMutate 直接 { ...detail, ...meta } 就地覆盖,
+// 详情表单一关就是新值,不等往返。派生字段(name 由 address 拼、assignee/agency 名字由 id 查)前端
+// 猜不准,保持旧值、留给 onSuccess 用服务端返回的权威 { name, detail } 校正;失败回滚快照。
+// 地址字段会改标题,故列表标记过期下次 mount 再同步(不立即重拉,免得缩略图闪)。
 export function useSaveProjectMeta() {
   return useMutation({
     mutationFn: ({ id, meta }: { id: string; meta: BffProjectMetaRequest }) =>
       saveBffProjectMeta({ path: { id }, body: meta }),
+    onMutate: async ({ id, meta }) => {
+      const key = queryKeys.projects.detail(id)
+      await queryClient.cancelQueries({ queryKey: key })
+      const previous = queryClient.getQueryData<BffProject>(key)
+      queryClient.setQueryData<BffProject>(key, (old) =>
+        old ? { ...old, detail: { ...old.detail, ...meta } } : old,
+      )
+      return { key, previous }
+    },
     onSuccess: ({ name, detail }, { id }) => {
       queryClient.setQueryData<BffProject>(queryKeys.projects.detail(id), (old) =>
         old ? { ...old, name, detail } : old,
       )
-      void queryClient.invalidateQueries({ queryKey: queryKeys.projects.lists() })
+      void queryClient.invalidateQueries({ queryKey: queryKeys.projects.lists(), refetchType: 'none' })
     },
-    onError: (error) => {
+    onError: (error, _vars, context) => {
+      if (context?.previous) queryClient.setQueryData(context.key, context.previous)
       toast.error(error instanceof Error && error.message ? error.message : '保存失败')
     },
   })
@@ -234,6 +246,33 @@ function patchComments(
   return { ...old, items: fn(old.items), total: Math.max(0, old.total + totalDelta) }
 }
 
+// 评论角标不在评论缓存里:项目级是 detail.commentCount,资产级是 detail.assets[].commentCount。
+// 增删评论时同步 bump,否则角标要等下次拉详情才动(onSettled 只标记过期、不重拉)。资产不知属于
+// 哪个 project → 扫所有 detail 缓存按 assetId 命中;项目直接改该 detail。onError 反向 bump 回滚。
+function adjustCommentCount(entity: CommentEntity, id: string, delta: number) {
+  if (entity === 'project') {
+    queryClient.setQueryData<BffProject>(queryKeys.projects.detail(id), (old) =>
+      old ? { ...old, detail: { ...old.detail, commentCount: Math.max(0, (old.detail.commentCount ?? 0) + delta) } } : old,
+    )
+    return
+  }
+  queryClient.setQueriesData<BffProject>(
+    { queryKey: queryKeys.projects.all, predicate: (q) => q.queryKey[2] === 'detail' },
+    (old) => {
+      if (!old?.detail?.assets?.some((a) => a.id === id)) return old
+      return {
+        ...old,
+        detail: {
+          ...old.detail,
+          assets: old.detail.assets.map((a) =>
+            a.id === id ? { ...a, commentCount: Math.max(0, a.commentCount + delta) } : a,
+          ),
+        },
+      }
+    },
+  )
+}
+
 // 追加:落到最新端(单页 = items 末尾;无限 = 最后一页末尾)
 function appendComment(old: CommentCache | undefined, comment: BffComment): CommentCache | undefined {
   if (!old) return old
@@ -264,6 +303,7 @@ export function useCreateComment(entity: CommentEntity) {
       queryClient.setQueryData<CommentCache>(key, (old) =>
         appendComment(old, { id: tempId, author: '…', content, createdAt: new Date().toISOString() }),
       )
+      adjustCommentCount(entity, id, 1) // 角标 +1(乐观)
       return { key, previous, tempId }
     },
     onSuccess: (created, _vars, context) => {
@@ -272,8 +312,9 @@ export function useCreateComment(entity: CommentEntity) {
         patchComments(old, (items) => items.map((c) => (c.id === context.tempId ? created : c))),
       )
     },
-    onError: (error, _vars, context) => {
+    onError: (error, { id }, context) => {
       if (context?.previous) queryClient.setQueryData(context.key, context.previous)
+      adjustCommentCount(entity, id, -1) // 回滚角标
       toast.error(error instanceof Error && error.message ? error.message : '评论失败')
     },
     // 计数挂在 detail(资产评论角标也在 detail.assets 里)→ 标记过期,下次展开再对账,
@@ -356,10 +397,12 @@ export function useDeleteComment(entity: CommentEntity) {
       queryClient.setQueryData<CommentCache>(key, (old) =>
         patchComments(old, (items) => items.filter((c) => c.id !== commentId), -1),
       )
+      adjustCommentCount(entity, entityId, -1) // 角标 -1(乐观)
       return { key, previous }
     },
-    onError: (error, _vars, context) => {
+    onError: (error, { entityId }, context) => {
       if (context?.previous) queryClient.setQueryData(context.key, context.previous)
+      adjustCommentCount(entity, entityId, 1) // 回滚角标
       toast.error(error instanceof Error && error.message ? error.message : '评论删除失败')
     },
     onSettled: (_d, _e, { entityId }) =>
