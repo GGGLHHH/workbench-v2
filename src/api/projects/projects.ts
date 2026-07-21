@@ -1,8 +1,17 @@
 import { useCallback, useRef } from 'react'
-import { keepPreviousData, useMutation, useQueries, useQuery } from '@tanstack/react-query'
+import {
+  keepPreviousData,
+  useInfiniteQuery,
+  useMutation,
+  useQueries,
+  useQuery,
+  type InfiniteData,
+} from '@tanstack/react-query'
 import { toast } from 'sonner'
 
 import type {
+  BffComment,
+  BffCommentPage,
   BffProject,
   BffProjectMetaRequest,
   BffProjectPage,
@@ -10,12 +19,24 @@ import type {
 } from '@/generated/api-types'
 import {
   changeBffProjectStatus,
+  completeBffUpload,
+  createBffAssetComment,
+  createBffProjectComment,
+  createBffUpload,
+  deleteBffComment,
   getBffProject,
+  getBffProjectAnalytics,
   getBffProjectOptions,
   getBffProjectStats,
+  listBffAssetComments,
   listBffProjects,
+  listBffProjectComments,
+  saveBffAssetTags,
+  saveBffComment,
   saveBffProject,
+  saveBffProjectAssignee,
   saveBffProjectMeta,
+  saveBffProjectVisibility,
 } from '@/generated/client'
 import { ApiError } from '@/lib/api-client'
 import { queryClient } from '@/lib/query-client'
@@ -129,6 +150,305 @@ export function useSaveProjectMeta() {
     },
     onError: (error) => {
       toast.error(error instanceof Error && error.message ? error.message : '保存失败')
+    },
+  })
+}
+
+// 评论。项目级与资产级同形 → 一对 hook 带 entity 参数,不写两份。
+// enabled:详情面板折叠时不拉;资产评论只在预览弹窗打开时拉。
+type CommentEntity = 'project' | 'asset'
+
+// 单页(项目面板:窄栏、紧凑,一次拉够即可)。limit 100 与改分页前一致,不回归。
+export function useComments(entity: CommentEntity, id: string | null, enabled = true) {
+  return useQuery({
+    enabled: Boolean(id) && enabled,
+    queryKey: queryKeys.projects.comments(entity, id ?? ''),
+    queryFn: () =>
+      entity === 'project'
+        ? listBffProjectComments({ path: { id: id! }, query: { limit: 100 } })
+        : listBffAssetComments({ path: { id: id! }, query: { limit: 100 } }),
+  })
+}
+
+// 无限向后分页(资产灯箱:Message Scroller 聊天流,上拉取更旧的一页)。
+// 上游按时间正序(offset 0 = 最旧),所以「尾页」= 最新那 20 条 → 起始 offset = total-20。
+// total 直接用已知的 asset.commentCount(详情早已加载),不额外请求。fetchPreviousPage 取更旧。
+// 缓存键与单页版同一个(comments(entity,id))—— 但资产评论只走这条路,项目只走单页,不撞。
+export const COMMENTS_PAGE = 20
+// pageParam 必须带 limit 而非只带 offset:尾页只有 total-offset 条(如 total 25、尾页 offset 5 → 20 条),
+// 更旧那页跨 [prevOffset, firstOffset),宽度 = firstOffset-prevOffset,可能不足一页。
+// 固定 limit 会让相邻两页重叠(offset 5 减 20 → 0,limit 20 抓 #1-#20,与尾页 #6-#25 撞 #6-#20)。
+type CommentPageParam = { offset: number; limit: number }
+export function useInfiniteComments(
+  entity: CommentEntity,
+  id: string | null,
+  total: number,
+  enabled = true,
+) {
+  const tailOffset = Math.max(0, total - COMMENTS_PAGE)
+  return useInfiniteQuery({
+    enabled: Boolean(id) && enabled,
+    queryKey: queryKeys.projects.comments(entity, id ?? ''),
+    // 尾页 = 最新那批:[tailOffset, total),宽度 total-tailOffset(≤20)
+    initialPageParam: { offset: tailOffset, limit: total - tailOffset || COMMENTS_PAGE } as CommentPageParam,
+    queryFn: ({ pageParam }) =>
+      entity === 'project'
+        ? listBffProjectComments({ path: { id: id! }, query: pageParam })
+        : listBffAssetComments({ path: { id: id! }, query: pageParam }),
+    // 更旧一页:[max(0, firstOffset-20), firstOffset);到 0 就没有更早的了
+    getPreviousPageParam: (firstPage): CommentPageParam | undefined => {
+      if (firstPage.offset <= 0) return undefined
+      const offset = Math.max(0, firstPage.offset - COMMENTS_PAGE)
+      return { offset, limit: firstPage.offset - offset }
+    },
+    // 不向后翻:新评论走乐观追加,不靠 next page
+    getNextPageParam: () => undefined,
+  })
+}
+
+// 评论缓存有两种形状:项目面板是单页 BffCommentPage,资产灯箱是 InfiniteData。
+// 三个 mutation 共用,故把「改缓存」抽成形状无关的工具 —— 否则每个 mutation 都要分叉两次。
+type CommentCache = BffCommentPage | InfiniteData<BffCommentPage>
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const isInfinite = (v: any): v is InfiniteData<BffCommentPage> => Boolean(v) && Array.isArray(v.pages)
+
+// 编辑/删除:对每页 items 跑同一个变换;total 只调最后一页(hook 读的就是它),免得各页漂移。
+function patchComments(
+  old: CommentCache | undefined,
+  fn: (items: BffComment[]) => BffComment[],
+  totalDelta = 0,
+): CommentCache | undefined {
+  if (!old) return old
+  if (isInfinite(old)) {
+    const last = old.pages.length - 1
+    return {
+      ...old,
+      pages: old.pages.map((p, i) => ({
+        ...p,
+        items: fn(p.items),
+        total: i === last ? Math.max(0, p.total + totalDelta) : p.total,
+      })),
+    }
+  }
+  return { ...old, items: fn(old.items), total: Math.max(0, old.total + totalDelta) }
+}
+
+// 追加:落到最新端(单页 = items 末尾;无限 = 最后一页末尾)
+function appendComment(old: CommentCache | undefined, comment: BffComment): CommentCache | undefined {
+  if (!old) return old
+  if (isInfinite(old)) {
+    const pages = old.pages.slice()
+    const last = pages.length - 1
+    if (last < 0) return old
+    pages[last] = { ...pages[last], items: [...pages[last].items, comment], total: pages[last].total + 1 }
+    return { ...old, pages }
+  }
+  return { ...old, items: [...old.items, comment], total: old.total + 1 }
+}
+
+// 乐观追加:评论是纯追加的时间线,失败只需把那条临时项摘掉 —— 比快照整页再回滚简单。
+// 服务端返回的真实 id/时间戳在 onSuccess 就地替换掉临时项,不重拉(重拉会让长线程跳一下)。
+export function useCreateComment(entity: CommentEntity) {
+  return useMutation({
+    mutationFn: ({ id, content, attachmentContentIds }: { id: string; content: string; attachmentContentIds?: string[] }) =>
+      entity === 'project'
+        ? createBffProjectComment({ path: { id }, body: { content, attachmentContentIds } })
+        : createBffAssetComment({ path: { id }, body: { content, attachmentContentIds } }),
+    onMutate: async ({ id, content }) => {
+      const key = queryKeys.projects.comments(entity, id)
+      await queryClient.cancelQueries({ queryKey: key })
+      const previous = queryClient.getQueryData<CommentCache>(key)
+      // 临时 id 用时间戳,避免与「total 相同」的老写法在快速连发时撞号
+      const tempId = `pending:${Date.now()}`
+      queryClient.setQueryData<CommentCache>(key, (old) =>
+        appendComment(old, { id: tempId, author: '…', content, createdAt: new Date().toISOString() }),
+      )
+      return { key, previous, tempId }
+    },
+    onSuccess: (created, _vars, context) => {
+      if (!context) return
+      queryClient.setQueryData<CommentCache>(context.key, (old) =>
+        patchComments(old, (items) => items.map((c) => (c.id === context.tempId ? created : c))),
+      )
+    },
+    onError: (error, _vars, context) => {
+      if (context?.previous) queryClient.setQueryData(context.key, context.previous)
+      toast.error(error instanceof Error && error.message ? error.message : '评论失败')
+    },
+    // 计数挂在 detail(资产评论角标也在 detail.assets 里)→ 标记过期,下次展开再对账,
+    // 不立刻重拉:详情带全部 asset url,重拉会让缩略图闪一遍。
+    onSettled: (_d, _e, { id }) =>
+      void queryClient.invalidateQueries({
+        queryKey: entity === 'project' ? queryKeys.projects.detail(id) : queryKeys.projects.all,
+        refetchType: 'none',
+      }),
+  })
+}
+
+// 项目分析。只对发布过的项目有意义 → 由调用方按状态决定 enabled,不是每开详情都拉。
+// 上游 404/403 时静默(analytics 是 frontend 域的端点,权限不一定给到每个 workbench 用户)。
+export function useProjectAnalytics(id: string | null, enabled: boolean) {
+  return useQuery({
+    enabled: Boolean(id) && enabled,
+    queryKey: queryKeys.projects.analytics(id ?? ''),
+    queryFn: () => getBffProjectAnalytics({ path: { id: id! } }),
+    retry: false,
+    staleTime: 60 * 1000,
+  })
+}
+
+// 附件上传三步:换票 → 浏览器直传 minio 预签名地址 → 落库。
+// 中间那步刻意绕开 BFF —— 50MB 的文件没必要在 Node 里过一遍(一次内存拷贝 + 一倍带宽)。
+// 不是 hook:调用方要对 N 个文件并发跑它,做成 hook 反而得自己排队。
+export async function uploadAttachment(file: File, signal?: AbortSignal): Promise<string> {
+  const { contentId, uploadUrl } = await createBffUpload({
+    body: { fileName: file.name, contentType: file.type || 'application/octet-stream', fileSize: file.size },
+  })
+  const put = await fetch(uploadUrl, {
+    method: 'PUT',
+    body: file,
+    headers: { 'content-type': file.type || 'application/octet-stream' },
+    signal,
+  })
+  if (!put.ok) throw new Error(`附件上传失败 (${put.status})`)
+  await completeBffUpload({ path: { id: contentId } })
+  return contentId
+}
+
+// 编辑 / 删除评论。上游按全局 comment id 寻址,但缓存是按 entity 分的 →
+// 调用方把所属 entity/entityId 一起传进来,省得为了找一条评论去遍历所有评论缓存。
+export function useEditComment(entity: CommentEntity) {
+  return useMutation({
+    mutationFn: ({ commentId, content }: { entityId: string; commentId: string; content: string }) =>
+      saveBffComment({ path: { id: commentId }, body: { content } }),
+    onMutate: async ({ entityId, commentId, content }) => {
+      const key = queryKeys.projects.comments(entity, entityId)
+      await queryClient.cancelQueries({ queryKey: key })
+      const previous = queryClient.getQueryData<CommentCache>(key)
+      queryClient.setQueryData<CommentCache>(key, (old) =>
+        patchComments(old, (items) => items.map((c) => (c.id === commentId ? { ...c, content } : c))),
+      )
+      return { key, previous }
+    },
+    // 用服务端返回的整条替换:乐观值只改了 content,editedAt 只有服务端知道
+    // (不校正的话「已编辑」标记要等下次重拉才出现,看着像没生效)
+    onSuccess: (updated, { commentId }, context) => {
+      queryClient.setQueryData<CommentCache>(context.key, (old) =>
+        patchComments(old, (items) => items.map((c) => (c.id === commentId ? updated : c))),
+      )
+    },
+    onError: (error, _vars, context) => {
+      if (context?.previous) queryClient.setQueryData(context.key, context.previous)
+      toast.error(error instanceof Error && error.message ? error.message : '评论修改失败')
+    },
+  })
+}
+
+export function useDeleteComment(entity: CommentEntity) {
+  return useMutation({
+    mutationFn: ({ commentId }: { entityId: string; commentId: string }) =>
+      deleteBffComment({ path: { id: commentId } }),
+    onMutate: async ({ entityId, commentId }) => {
+      const key = queryKeys.projects.comments(entity, entityId)
+      await queryClient.cancelQueries({ queryKey: key })
+      const previous = queryClient.getQueryData<CommentCache>(key)
+      queryClient.setQueryData<CommentCache>(key, (old) =>
+        patchComments(old, (items) => items.filter((c) => c.id !== commentId), -1),
+      )
+      return { key, previous }
+    },
+    onError: (error, _vars, context) => {
+      if (context?.previous) queryClient.setQueryData(context.key, context.previous)
+      toast.error(error instanceof Error && error.message ? error.message : '评论删除失败')
+    },
+    onSettled: (_d, _e, { entityId }) =>
+      void queryClient.invalidateQueries({
+        queryKey: entity === 'project' ? queryKeys.projects.detail(entityId) : queryKeys.projects.all,
+        refetchType: 'none',
+      }),
+  })
+}
+
+// 指派。'me' 是哨兵值 → 服务端解析成当前会话用户(前端不必先去问自己的 id)。
+export function useSaveProjectAssignee() {
+  return useMutation({
+    mutationFn: ({ id, assigneeId }: { id: string; assigneeId: string | null }) =>
+      saveBffProjectAssignee({ path: { id }, body: { assigneeId } }),
+    // 不做乐观:'me' 的落点只有服务端知道,猜不出名字。用返回值就地校正,仍然只花一次往返。
+    onSuccess: ({ assignee, assigneeId }, { id }) => {
+      queryClient.setQueryData<BffProject>(queryKeys.projects.detail(id), (old) =>
+        old ? { ...old, detail: { ...old.detail, assignee, assigneeId } } : old,
+      )
+      // 列表卡片也显示 assignee → 标记过期,下次 mount 再同步(不立刻重拉,免得缩略图闪)
+      void queryClient.invalidateQueries({ queryKey: queryKeys.projects.lists(), refetchType: 'none' })
+    },
+    onError: (error) => {
+      toast.error(error instanceof Error && error.message ? error.message : '指派失败')
+    },
+  })
+}
+
+// 资产房间标签。下游按名字全量覆盖 → 前端也传全量,省掉 add/remove 两套语义。
+// 乐观改 detail.assets[].tags:标签是灯箱里即时反馈的东西,等一个往返会明显发木。
+export function useSaveAssetTags() {
+  return useMutation({
+    mutationFn: ({ projectId, assetId, tags }: { projectId: string; assetId: string; tags: string[] }) =>
+      saveBffAssetTags({ path: { id: projectId, assetId }, body: { tags } }),
+    onMutate: async ({ projectId, assetId, tags }) => {
+      const key = queryKeys.projects.detail(projectId)
+      await queryClient.cancelQueries({ queryKey: key })
+      const previous = queryClient.getQueryData<BffProject>(key)
+      queryClient.setQueryData<BffProject>(key, (old) =>
+        old
+          ? {
+              ...old,
+              detail: {
+                ...old.detail,
+                assets: old.detail.assets?.map((a) => (a.id === assetId ? { ...a, tags } : a)),
+              },
+            }
+          : old,
+      )
+      return { key, previous }
+    },
+    // 用服务端回的规范名校正乐观值(上游会把 "living room" 折成 "living_room")
+    onSuccess: ({ tags }, { assetId }, context) => {
+      queryClient.setQueryData<BffProject>(context.key, (old) =>
+        old
+          ? {
+              ...old,
+              detail: {
+                ...old.detail,
+                assets: old.detail.assets?.map((a) => (a.id === assetId ? { ...a, tags } : a)),
+              },
+            }
+          : old,
+      )
+    },
+    onError: (error, _vars, context) => {
+      if (context?.previous) queryClient.setQueryData(context.key, context.previous)
+      toast.error(error instanceof Error && error.message ? error.message : '标签保存失败')
+    },
+  })
+}
+
+// 可见性。下游只回 204,BFF 回显入参 → 直接就地改 detail 缓存。
+export function useSaveProjectVisibility() {
+  return useMutation({
+    mutationFn: ({ id, visibility }: { id: string; visibility: 'public' | 'agency' | 'owner_private' }) =>
+      saveBffProjectVisibility({ path: { id }, body: { visibility } }),
+    onMutate: async ({ id, visibility }) => {
+      const key = queryKeys.projects.detail(id)
+      await queryClient.cancelQueries({ queryKey: key })
+      const previous = queryClient.getQueryData<BffProject>(key)
+      queryClient.setQueryData<BffProject>(key, (old) =>
+        old ? { ...old, detail: { ...old.detail, visibility } } : old,
+      )
+      return { key, previous }
+    },
+    onError: (error, _vars, context) => {
+      if (context?.previous) queryClient.setQueryData(context.key, context.previous)
+      toast.error(error instanceof Error && error.message ? error.message : '可见性修改失败')
     },
   })
 }

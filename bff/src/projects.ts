@@ -8,13 +8,20 @@ import {
 import {
   approveProject,
   assignProjectToSelf,
+  completeUpload,
   createProject,
+  createProjectAssetsComment,
+  createProjectComment,
+  createUpload,
+  deleteComment,
   failProject,
   generateProject,
   getProject,
+  getProjectAnalyticsMetrics,
   getProjectStatistics,
   getProjectWorkbenchTimeline,
   listAgencyOptions,
+  listProjectAssetsComments,
   listProjectComments,
   listProjects,
   listUserOptions,
@@ -22,14 +29,20 @@ import {
   publishProject,
   reassignProject,
   rejectProject,
+  replaceProjectAssetTagsBatch,
   resubmitProject,
   revertProject,
   startProjectReview,
   startProjectWork,
   submitProjectReview,
+  updateComment,
   updateProject,
+  updateProjectAssignee,
+  updateProjectVisibility,
   upsertProjectWorkbenchTimeline,
 } from './generated/client';
+import { config } from './config';
+import { mediaKind, type MediaKind } from './media';
 import { forwardAuth } from './xchange-client';
 
 // FSM 状态动作 → xchangeai 端点。start_work 为复合:created/prepared 先认领(assign)
@@ -97,25 +110,32 @@ const title = (p: {
   return [line, locality].filter(Boolean).join(', ') || `Project ${p.id.slice(0, 8)}`
 }
 
-// 单个 asset → 缩略图 {url, kind}:优先真·thumbnail_url(图片海报),否则用 preview_url/
-// download_url(minio 预签名、浏览器可直取);按 mime 标记 image/video 让前端用 <img>/<video>。
-type Thumb = { url: string; kind: 'image' | 'video' }
+// 单个 asset → {url 原件, thumbnailUrl 海报, kind 真实媒体类型}。
+// url 与 thumbnailUrl 必须分开:视频带海报时,网格要的是海报,灯箱和下载要的是视频本体 ——
+// 早先只返回一个 url 且视频有海报时把 kind 记成 image,网格没事,一放大就露馅。
+// kind 一律按 mime 判定,不受有没有海报影响。
+// kind 三态而非两态:评论附件可以是任意文件(pdf/txt/zip),当成图片塞进 <img> 只会得到一个碎图。
+// 项目资产实际上只有 image/video,所以对它这第三态是死路 —— 但判定规则只该有一份。
+type Media = { url: string; thumbnailUrl: string | null; kind: MediaKind }
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-const assetThumb = (a: any): Thumb | null => {
+const assetMedia = (a: any): Media | null => {
   const c = a?.content
   if (!c) return null
-  if (c.thumbnail_url) return { url: c.thumbnail_url, kind: 'image' }
-  const url = c.preview_url || c.download_url
+  const url = c.preview_url || c.download_url || c.thumbnail_url
   if (!url) return null
-  return { url, kind: String(c.mime_type || '').startsWith('video/') ? 'video' : 'image' }
+  return {
+    url,
+    thumbnailUrl: c.thumbnail_url ?? null,
+    kind: mediaKind(c.mime_type),
+  }
 }
 
 // 项目缩略图:首个 creator_asset,回退 agent_asset。
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-const firstThumb = (p: any): Thumb | null => {
+const firstThumb = (p: any): Media | null => {
   for (const a of [...(p.creator_assets ?? []), ...(p.agent_assets ?? [])]) {
-    const t = assetThumb(a)
-    if (t) return t
+    const m = assetMedia(a)
+    if (m) return m
   }
   return null
 }
@@ -134,8 +154,9 @@ const toSummary = (p: any) => {
     resourceCount: p.creator_assets?.length ?? 0,
     clipCount: p.agent_assets?.length ?? 0,
     durationSeconds: p.workflow_duration_seconds ?? 0,
-    thumbnailUrl: thumb?.url ?? null,
-    thumbnailKind: thumb?.kind ?? null,
+    // 有海报就用海报(一张图比拉 <video> metadata 便宜),没有才退回本体让前端按 kind 渲染
+    thumbnailUrl: thumb?.thumbnailUrl ?? thumb?.url ?? null,
+    thumbnailKind: thumb ? (thumb.thumbnailUrl ? 'image' : thumb.kind) : null,
     updatedAt: p.updated_at,
   }
 }
@@ -145,25 +166,50 @@ const toSummary = (p: any) => {
 // 单独成 detail 子对象:BffProject 顶层的 state 是时间轴,而 listing 的 state 是「州」,平铺会撞名。
 // 只读:xchangeai 那套 PATCH meta 这里还没开,编辑要另开端点。
 // 资产列表 → 缩略图网格用的扁平项。tags 取名字数组(对齐 workbench 图库瓦片上的标签)。
+// 拿不到 URL 的也照样返回(url 为空串):以前 flatMap 把它们静默丢了,于是网格标题的
+// "Resources (10)" 和统计行的 "12 resources" 互相打脸。前端 Thumb 对空 url 本就有占位。
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const toAssets = (list: any[] | null | undefined, kind: 'creator' | 'agent') =>
-  (list ?? []).flatMap((a) => {
-    const t = assetThumb(a)
-    return t
-      ? [
-          {
-            id: a.id ?? a.content_id,
-            group: kind,
-            url: t.url,
-            kind: t.kind,
-            name: a.content?.file_name ?? null,
-            commentCount: a.comment_count ?? 0,
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            tags: (a.tags ?? []).map((tag: any) => tag.name).filter(Boolean),
-          },
-        ]
-      : []
+  (list ?? []).map((a) => {
+    const m = assetMedia(a)
+    return {
+      id: a.id ?? a.content_id,
+      group: kind,
+      url: m?.url ?? '',
+      thumbnailUrl: m?.thumbnailUrl ?? null,
+      kind: m?.kind ?? 'image',
+      name: a.content?.file_name ?? null,
+      commentCount: a.comment_count ?? 0,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      tags: (a.tags ?? []).map((tag: any) => tag.name).filter(Boolean),
+      // 审核双签:管理员与被指派创作者各投一票,两者都 approved 才算过。
+      // 只有 agent_assets 有这两栏 —— creator 上传的原始素材不进审核。
+      adminReview: a.admin_review_status ?? null,
+      assigneeReview: a.assignee_review_status ?? null,
+      sizeBytes: a.content?.file_size ?? null,
+      durationSeconds: a.content?.duration ?? null,
+    }
   })
+
+// CommentModel → 时间线一条。author 下游只给 {name},附件复用 assetThumb 的 url/kind 判定。
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const toComment = (c: any) => ({
+  id: c.id,
+  author: c.author?.name ?? 'Unknown',
+  // 前端拿它跟会话用户比,决定给不给编辑/删除入口(后端仍会再校验一次权限)
+  authorId: c.author_id ?? null,
+  content: c.content ?? '',
+  createdAt: c.created_at,
+  // 改过的评论标一下,否则别人看到内容变了却无从察觉
+  editedAt: c.updated_at && c.updated_at !== c.created_at ? c.updated_at : null,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  attachments: (c.attachments ?? []).flatMap((a: any) => {
+    const m = assetMedia(a)
+    return m
+      ? [{ url: m.url, kind: m.kind, name: a.content?.file_name ?? null, sizeBytes: a.content?.file_size ?? null }]
+      : []
+  }),
+})
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const toDetail = (p: any, commentCount: number) => {
@@ -188,6 +234,14 @@ const toDetail = (p: any, commentCount: number) => {
     agent: p.owner?.name ?? null,
     assignee: p.assignee?.name ?? null,
     createdBy: p.created_by?.name ?? null,
+    // 「现在这个状态是谁推过来的」—— 状态徽章旁边最想知道的一件事,上游一直有,之前没映射
+    statusUpdatedBy: p.status_updated_by?.name ?? null,
+    // 被拒项目直达 xchangeai 评审页看驳回意见(对齐 workbench 的 xchangeaiReviewUrl)。
+    // 链接在 BFF 拼好:baseUrl 是部署配置,没必要泄给前端再让它拼一遍。
+    reviewUrl:
+      p.status === 'rejected'
+        ? `${config.xchangeUpstream.replace(/\/+$/, '')}/admin/project/${encodeURIComponent(p.id)}/review`
+        : null,
     // 编辑表单的下拉要按 id 选中,光有名字不够
     agencyId: p.agency_id ?? p.agency?.id ?? null,
     agentId: p.owner_id ?? p.owner?.id ?? null,
@@ -255,11 +309,16 @@ export const registerProjectRoutes = (app: FastifyInstance): void => {
     properties: {
       id: { type: 'string' },
       group: { type: 'string' }, // creator | agent
-      url: { type: 'string' },
-      kind: { type: 'string' }, // image | video
+      url: { type: 'string' }, // 原件(灯箱/下载);拿不到时为空串
+      thumbnailUrl: nullable('string'), // 海报,仅视频有;网格优先用它
+      kind: { type: 'string' }, // image | video(按 mime 判,与有无海报无关)
       name: nullable('string'),
       commentCount: { type: 'integer' },
       tags: { type: 'array', items: { type: 'string' } },
+      adminReview: nullable('string'), // pending | approved | rejected(仅 agent 资产)
+      assigneeReview: nullable('string'),
+      sizeBytes: nullable('number'),
+      durationSeconds: nullable('number'),
     },
   });
   app.addSchema({
@@ -333,6 +392,8 @@ export const registerProjectRoutes = (app: FastifyInstance): void => {
       agent: nullable('string'),
       assignee: nullable('string'),
       createdBy: nullable('string'),
+      statusUpdatedBy: nullable('string'),
+      reviewUrl: nullable('string'),
       agencyId: nullable('string'),
       agentId: nullable('string'),
       assigneeId: nullable('string'),
@@ -382,6 +443,120 @@ export const registerProjectRoutes = (app: FastifyInstance): void => {
       limit: { type: 'integer' },
       offset: { type: 'integer' },
     },
+  });
+  // 评论:项目级与资产级同一条时间线形态(下游也是同一个 CommentModel,只是 entity_type 不同),
+  // 故共用一套 schema —— 两处 UI 也就能共用一个 CommentThread。
+  app.addSchema({
+    $id: 'BffComment',
+    type: 'object',
+    required: ['id', 'author', 'content', 'createdAt'],
+    properties: {
+      id: { type: 'string' },
+      author: { type: 'string' },
+      authorId: nullable('string'),
+      content: { type: 'string' },
+      createdAt: { type: 'string' },
+      editedAt: nullable('string'),
+      // 附件下游是 content 对象,这里只留前端能直接渲染的两件事
+      attachments: {
+        type: 'array',
+        items: {
+          type: 'object',
+          required: ['url', 'kind'],
+          properties: {
+            url: { type: 'string' },
+            kind: { type: 'string' }, // image | video | file
+            name: nullable('string'),
+            sizeBytes: nullable('number'),
+          },
+        },
+      },
+    },
+  });
+  app.addSchema({
+    $id: 'BffCommentPage',
+    type: 'object',
+    required: ['items', 'total', 'offset'],
+    properties: {
+      items: { type: 'array', items: { $ref: 'BffComment#' } },
+      total: { type: 'integer' },
+      // 回显 offset:前端上拉取更旧的一页要靠它算下一个 offset(向后分页)
+      offset: { type: 'integer' },
+    },
+  });
+  app.addSchema({
+    $id: 'BffCommentRequest',
+    type: 'object',
+    required: ['content'],
+    properties: {
+      // 不设 minLength:只发附件不写字是合法的(一张图本身就是内容)。
+      // 「正文和附件不能同时为空」这条由调用方把关 —— schema 表达不了跨字段约束。
+      content: { type: 'string' },
+      // 已完成上传的 content id;走 /bff/uploads 那两步先拿到
+      attachmentContentIds: { type: 'array', items: { type: 'string' } },
+    },
+  });
+  // 项目分析。三个指标同形(当前值 + 环比),故共用一个 metric schema。
+  app.addSchema({
+    $id: 'BffMetric',
+    type: 'object',
+    required: ['value', 'previous'],
+    properties: {
+      value: { type: 'integer' },
+      previous: { type: 'integer' },
+      changePercent: nullable('number'),
+    },
+  });
+  app.addSchema({
+    $id: 'BffProjectAnalytics',
+    type: 'object',
+    required: ['views', 'uniqueVisitors', 'shares'],
+    properties: {
+      views: { $ref: 'BffMetric#' },
+      uniqueVisitors: { $ref: 'BffMetric#' },
+      shares: { $ref: 'BffMetric#' },
+    },
+  });
+  app.addSchema({
+    $id: 'BffUploadRequest',
+    type: 'object',
+    required: ['fileName', 'contentType'],
+    properties: {
+      fileName: { type: 'string' },
+      contentType: { type: 'string' },
+      fileSize: { type: 'integer' },
+    },
+  });
+  app.addSchema({
+    $id: 'BffUploadTicket',
+    type: 'object',
+    required: ['contentId', 'uploadUrl'],
+    properties: { contentId: { type: 'string' }, uploadUrl: { type: 'string' } },
+  });
+  app.addSchema({
+    $id: 'BffAssigneeRequest',
+    type: 'object',
+    required: ['assigneeId'],
+    // 'me' 是个哨兵值:等价「认领给我」,由服务端解析成当前会话用户
+    properties: { assigneeId: { type: ['string', 'null'] } },
+  });
+  app.addSchema({
+    $id: 'BffAssigneeResponse',
+    type: 'object',
+    required: ['assignee', 'assigneeId'],
+    properties: { assignee: nullable('string'), assigneeId: nullable('string') },
+  });
+  app.addSchema({
+    $id: 'BffAssetTagsRequest',
+    type: 'object',
+    required: ['tags'],
+    properties: { tags: { type: 'array', items: { type: 'string' } } },
+  });
+  app.addSchema({
+    $id: 'BffVisibilityRequest',
+    type: 'object',
+    required: ['visibility'],
+    properties: { visibility: { type: 'string', enum: ['public', 'agency', 'owner_private'] } },
   });
   app.addSchema({
     $id: 'BffStatusActionRequest',
@@ -551,6 +726,252 @@ export const registerProjectRoutes = (app: FastifyInstance): void => {
       return { name: title(proj), detail: toDetail(proj, comments?.total ?? 0) };
     },
   );
+
+  // 评论。项目级与资产级只差下游端点 —— 用同一对 handler 工厂生成,免得两份几乎一样的路由。
+  // ponytail: 只取首页 100 条(评论天然少);真出现长线程再补分页。
+  const commentRoutes = (
+    kind: 'project' | 'asset',
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    list: (o: any, a: any) => Promise<any>,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    create: (o: any, a: any) => Promise<any>,
+  ) => {
+    const path = kind === 'project' ? '/bff/projects/:id/comments' : '/bff/project-assets/:id/comments'
+    const Op = kind === 'project' ? 'BffProjectComment' : 'BffAssetComment'
+    app.get<{ Params: { id: string }; Querystring: { limit?: number; offset?: number } }>(
+      path,
+      {
+        schema: {
+          operationId: `list${Op}s`,
+          tags: ['bff'],
+          params: idParams,
+          // 分页:资产评论用 Message Scroller 上拉取更旧的一页。上游按时间正序,offset 0 = 最旧。
+          querystring: {
+            type: 'object',
+            properties: {
+              limit: { type: 'integer', minimum: 1, maximum: 100 },
+              offset: { type: 'integer', minimum: 0 },
+            },
+          },
+          response: { 200: { $ref: 'BffCommentPage#' } },
+        },
+      },
+      async (req) => {
+        const limit = req.query.limit ?? 20
+        const offset = req.query.offset ?? 0
+        const page = await list({ path: { id: req.params.id }, query: { limit, offset } }, forwardAuth(req))
+        return { items: (page.items ?? []).map(toComment), total: page.total ?? 0, offset }
+      },
+    )
+    app.post<{ Params: { id: string }; Body: { content: string; attachmentContentIds?: string[] } }>(
+      path,
+      {
+        schema: {
+          operationId: `create${Op}`,
+          tags: ['bff'],
+          params: idParams,
+          body: { $ref: 'BffCommentRequest#' },
+          response: { 200: { $ref: 'BffComment#' } },
+        },
+      },
+      async (req) =>
+        toComment(
+          await create(
+            {
+              path: { id: req.params.id },
+              body: {
+                content: req.body.content,
+                attachment_content_ids: req.body.attachmentContentIds?.length
+                  ? req.body.attachmentContentIds
+                  : null,
+              },
+            },
+            forwardAuth(req),
+          ),
+        ),
+    )
+  }
+  commentRoutes('project', listProjectComments, createProjectComment)
+  commentRoutes('asset', listProjectAssetsComments, createProjectAssetsComment)
+
+  // 项目分析(浏览/独立访客/分享,各带环比)。只有发布过的项目才有意义,故单独端点而不并进
+  // detail —— 每次开详情都白拉一次分析不值,前端按状态决定要不要问。
+  app.get<{ Params: { id: string } }>(
+    '/bff/projects/:id/analytics',
+    {
+      schema: {
+        operationId: 'getBffProjectAnalytics',
+        tags: ['bff'],
+        params: idParams,
+        response: { 200: { $ref: 'BffProjectAnalytics#' } },
+      },
+    },
+    async (req) => {
+      const a = await getProjectAnalyticsMetrics({ path: { id: req.params.id } }, forwardAuth(req))
+      const m = (x: { value: number; previous: number; change_percent?: number }) => ({
+        value: x.value,
+        previous: x.previous,
+        changePercent: x.change_percent ?? null,
+      })
+      return { views: m(a.views), uniqueVisitors: m(a.unique_visitors), shares: m(a.shares) }
+    },
+  )
+
+  // 附件上传的两端。中间那步(把字节 PUT 到 uploadUrl)由浏览器直传 minio 预签名地址 ——
+  // 不经 BFF:文件最大 50MB,让它在 Node 里过一遍纯属白费一次内存拷贝和一倍带宽。
+  // 资产 URL 本来就是同一批预签名地址,浏览器已经在直连了。
+  app.post<{ Body: { fileName: string; contentType: string; fileSize?: number } }>(
+    '/bff/uploads',
+    {
+      schema: {
+        operationId: 'createBffUpload',
+        tags: ['bff'],
+        body: { $ref: 'BffUploadRequest#' },
+        response: { 200: { $ref: 'BffUploadTicket#' } },
+      },
+    },
+    async (req) => {
+      const t = await createUpload(
+        {
+          body: {
+            file_name: req.body.fileName,
+            content_type: req.body.contentType,
+            file_size: req.body.fileSize,
+          },
+        },
+        forwardAuth(req),
+      )
+      return { contentId: t.content_id, uploadUrl: t.upload_url }
+    },
+  )
+  app.post<{ Params: { id: string } }>(
+    '/bff/uploads/:id/complete',
+    {
+      schema: {
+        operationId: 'completeBffUpload',
+        tags: ['bff'],
+        params: idParams,
+        response: { 200: { type: 'object', required: ['ok'], properties: { ok: { type: 'boolean' } } } },
+      },
+    },
+    async (req) => {
+      await completeUpload({ path: { content_id: req.params.id } }, forwardAuth(req))
+      return { ok: true }
+    },
+  )
+
+  // 编辑 / 删除评论。上游按全局 comment id 寻址(admin/comments/:id),不分项目还是资产,
+  // 所以这两条不进上面的工厂 —— 它是按 entity 分的。权限由上游校验(comment:update/delete)。
+  app.put<{ Params: { id: string }; Body: { content: string } }>(
+    '/bff/comments/:id',
+    {
+      schema: {
+        operationId: 'saveBffComment',
+        tags: ['bff'],
+        params: idParams,
+        body: { $ref: 'BffCommentRequest#' },
+        response: { 200: { $ref: 'BffComment#' } },
+      },
+    },
+    async (req) =>
+      toComment(
+        await updateComment(
+          { path: { id: req.params.id }, body: { content: req.body.content } },
+          forwardAuth(req),
+        ),
+      ),
+  )
+  app.delete<{ Params: { id: string } }>(
+    '/bff/comments/:id',
+    {
+      schema: {
+        operationId: 'deleteBffComment',
+        tags: ['bff'],
+        params: idParams,
+        response: { 200: { type: 'object', required: ['ok'], properties: { ok: { type: 'boolean' } } } },
+      },
+    },
+    async (req) => {
+      await deleteComment({ path: { id: req.params.id } }, forwardAuth(req))
+      return { ok: true }
+    },
+  )
+
+  // 指派。两件事一个端点:assigneeId 给 'me' 走 assignProjectToSelf(免得前端先去问自己的 id),
+  // 给具体 id 或 null 走 updateProjectAssignee(null = 取消指派)。
+  // 与 meta 表单的下拉不冲突:那条是「编辑态里连同其它 14 个字段一起存」,这条是「就地一键改」。
+  app.put<{ Params: { id: string }; Body: { assigneeId: string | null } }>(
+    '/bff/projects/:id/assignee',
+    {
+      schema: {
+        operationId: 'saveBffProjectAssignee',
+        tags: ['bff'],
+        params: idParams,
+        body: { $ref: 'BffAssigneeRequest#' },
+        response: { 200: { $ref: 'BffAssigneeResponse#' } },
+      },
+    },
+    async (req) => {
+      const { id } = req.params
+      const auth = forwardAuth(req)
+      if (req.body.assigneeId === 'me') await assignProjectToSelf({ path: { id } }, auth)
+      else await updateProjectAssignee({ path: { id }, body: { assignee_id: req.body.assigneeId } }, auth)
+      // 回真实的 assignee:'me' 的落点只有服务端知道,取消指派也要把名字清掉
+      const proj = await getProject({ path: { id } }, auth)
+      return { assignee: proj.assignee?.name ?? null, assigneeId: proj.assignee_id ?? proj.assignee?.id ?? null }
+    },
+  )
+
+  // 资产房间标签(对齐 workbench 的 TagEditor)。走 batch 端点是因为它按 **名字** 全量覆盖并
+  // 自动建标签;单资产那个 (PUT .../assets/:id/tags) 只收 tag_ids,前端还得先查目录换 id。
+  app.put<{ Params: { id: string; assetId: string }; Body: { tags: string[] } }>(
+    '/bff/projects/:id/assets/:assetId/tags',
+    {
+      schema: {
+        operationId: 'saveBffAssetTags',
+        tags: ['bff'],
+        params: {
+          type: 'object',
+          required: ['id', 'assetId'],
+          properties: { id: { type: 'string' }, assetId: { type: 'string' } },
+        },
+        body: { $ref: 'BffAssetTagsRequest#' },
+        response: { 200: { $ref: 'BffAssetTagsRequest#' } },
+      },
+    },
+    async (req) => {
+      const { id, assetId } = req.params
+      const result = await replaceProjectAssetTagsBatch(
+        { path: { id }, body: { assets: [{ asset_id: assetId, tag_names: req.body.tags }] } },
+        forwardAuth(req),
+      )
+      // 回服务端的规范名而不是入参:上游会把 "living room" 折成 "living_room",
+      // 回显入参的话前端乐观值就一直停在未规范的写法,直到下次拉详情才悄悄变样。
+      const tags = (result.assets ?? []).find((a) => a.asset_id === assetId)?.tags
+      return { tags: tags ? tags.map((t) => t.name) : req.body.tags }
+    },
+  )
+
+  // 可见性。下游 PUT 只回 204,故这里回显入参 —— 前端拿它就地改缓存,不用再拉一次详情。
+  app.put<{ Params: { id: string }; Body: { visibility: 'public' | 'agency' | 'owner_private' } }>(
+    '/bff/projects/:id/visibility',
+    {
+      schema: {
+        operationId: 'saveBffProjectVisibility',
+        tags: ['bff'],
+        params: idParams,
+        body: { $ref: 'BffVisibilityRequest#' },
+        response: { 200: { $ref: 'BffVisibilityRequest#' } },
+      },
+    },
+    async (req) => {
+      await updateProjectVisibility(
+        { path: { id: req.params.id }, body: { visibility: req.body.visibility } },
+        forwardAuth(req),
+      )
+      return { visibility: req.body.visibility }
+    },
+  )
 
   // 表单三个下拉的候选。xchangeai 分了 agencies/users 两套 options 端点,users 按 role_id 区分
   // agent 与 creator(角色 id 见 xchangeai-workbench server/xchangeaiIntegration.js)。

@@ -10,6 +10,7 @@
     "build": "vite build",
     "preview": "vite preview",
     "typecheck": "tsc -b",
+    "test": "vitest run",
     "generate": "vg",
     "generate:xchange": "vg --input http://localhost:8080/openapi.yaml --output bff/src/generated --path-prefix /api/v1/ --strip-prefix true --http-client-module ../xchange-client --type-aliases"
   },
@@ -49,6 +50,7 @@
     "mediabunny": "^1.50.8",
     "motion": "^12.42.2",
     "next-themes": "^0.4.6",
+    "ramda": "^0.32.0",
     "react": "^19.2.7",
     "react-day-picker": "^10.0.1",
     "react-dom": "^19.2.7",
@@ -66,6 +68,7 @@
     "@tailwindcss/vite": "^4.3.3",
     "@tanstack/router-plugin": "^1.168.22",
     "@types/node": "^24.13.2",
+    "@types/ramda": "^0.32.0",
     "@types/react": "^19.2.17",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^6.0.3",
@@ -75,6 +78,7 @@
     "tsx": "^4.19.0",
     "typescript": "~6.0.2",
     "vite": "^8.1.1",
-    "vite-plugin-openapi-codegen": "4.0.0"
+    "vite-plugin-openapi-codegen": "4.0.0",
+    "vitest": "^4.1.10"
   }
 }

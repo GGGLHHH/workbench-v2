@@ -114,6 +114,150 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/bff/projects/{id}/comments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["listBffProjectComments"];
+        put?: never;
+        post: operations["createBffProjectComment"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/bff/project-assets/{id}/comments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["listBffAssetComments"];
+        put?: never;
+        post: operations["createBffAssetComment"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/bff/projects/{id}/analytics": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getBffProjectAnalytics"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/bff/uploads": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["createBffUpload"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/bff/uploads/{id}/complete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["completeBffUpload"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/bff/comments/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put: operations["saveBffComment"];
+        post?: never;
+        delete: operations["deleteBffComment"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/bff/projects/{id}/assignee": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put: operations["saveBffProjectAssignee"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/bff/projects/{id}/assets/{assetId}/tags": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put: operations["saveBffAssetTags"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/bff/projects/{id}/visibility": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put: operations["saveBffProjectVisibility"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/bff/project-options": {
         parameters: {
             query?: never;
@@ -168,10 +312,15 @@ export interface components {
             id: string;
             group: string;
             url: string;
+            thumbnailUrl?: null | string;
             kind: string;
             name?: null | string;
             commentCount: number;
             tags?: string[];
+            adminReview?: null | string;
+            assigneeReview?: null | string;
+            sizeBytes?: null | number;
+            durationSeconds?: null | number;
         };
         BffOption: {
             id: string;
@@ -223,6 +372,8 @@ export interface components {
             agent?: null | string;
             assignee?: null | string;
             createdBy?: null | string;
+            statusUpdatedBy?: null | string;
+            reviewUrl?: null | string;
             agencyId?: null | string;
             agentId?: null | string;
             assigneeId?: null | string;
@@ -267,6 +418,62 @@ export interface components {
             limit: number;
             offset: number;
         };
+        BffComment: {
+            id: string;
+            author: string;
+            authorId?: null | string;
+            content: string;
+            createdAt: string;
+            editedAt?: null | string;
+            attachments?: {
+                url: string;
+                kind: string;
+                name?: null | string;
+                sizeBytes?: null | number;
+            }[];
+        };
+        BffCommentPage: {
+            items: components["schemas"]["BffComment"][];
+            total: number;
+            offset: number;
+        };
+        BffCommentRequest: {
+            content: string;
+            attachmentContentIds?: string[];
+        };
+        BffMetric: {
+            value: number;
+            previous: number;
+            changePercent?: null | number;
+        };
+        BffProjectAnalytics: {
+            views: components["schemas"]["BffMetric"];
+            uniqueVisitors: components["schemas"]["BffMetric"];
+            shares: components["schemas"]["BffMetric"];
+        };
+        BffUploadRequest: {
+            fileName: string;
+            contentType: string;
+            fileSize?: number;
+        };
+        BffUploadTicket: {
+            contentId: string;
+            uploadUrl: string;
+        };
+        BffAssigneeRequest: {
+            assigneeId: string | null;
+        };
+        BffAssigneeResponse: {
+            assignee: null | string;
+            assigneeId: null | string;
+        };
+        BffAssetTagsRequest: {
+            tags: string[];
+        };
+        BffVisibilityRequest: {
+            /** @enum {string} */
+            visibility: "public" | "agency" | "owner_private";
+        };
         BffStatusActionRequest: {
             action: string;
         };
@@ -295,6 +502,17 @@ export type BffProject = components['schemas']['BffProject'];
 export type BffProjectSaveRequest = components['schemas']['BffProjectSaveRequest'];
 export type BffProjectSaveResponse = components['schemas']['BffProjectSaveResponse'];
 export type BffProjectPage = components['schemas']['BffProjectPage'];
+export type BffComment = components['schemas']['BffComment'];
+export type BffCommentPage = components['schemas']['BffCommentPage'];
+export type BffCommentRequest = components['schemas']['BffCommentRequest'];
+export type BffMetric = components['schemas']['BffMetric'];
+export type BffProjectAnalytics = components['schemas']['BffProjectAnalytics'];
+export type BffUploadRequest = components['schemas']['BffUploadRequest'];
+export type BffUploadTicket = components['schemas']['BffUploadTicket'];
+export type BffAssigneeRequest = components['schemas']['BffAssigneeRequest'];
+export type BffAssigneeResponse = components['schemas']['BffAssigneeResponse'];
+export type BffAssetTagsRequest = components['schemas']['BffAssetTagsRequest'];
+export type BffVisibilityRequest = components['schemas']['BffVisibilityRequest'];
 export type BffStatusActionRequest = components['schemas']['BffStatusActionRequest'];
 export type BffProjectStatusResponse = components['schemas']['BffProjectStatusResponse'];
 export type $defs = Record<string, never>;
@@ -531,6 +749,307 @@ export interface operations {
             };
         };
     };
+    listBffProjectComments: {
+        parameters: {
+            query?: {
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Default Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BffCommentPage"];
+                };
+            };
+        };
+    };
+    createBffProjectComment: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BffCommentRequest"];
+            };
+        };
+        responses: {
+            /** @description Default Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BffComment"];
+                };
+            };
+        };
+    };
+    listBffAssetComments: {
+        parameters: {
+            query?: {
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Default Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BffCommentPage"];
+                };
+            };
+        };
+    };
+    createBffAssetComment: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BffCommentRequest"];
+            };
+        };
+        responses: {
+            /** @description Default Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BffComment"];
+                };
+            };
+        };
+    };
+    getBffProjectAnalytics: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Default Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BffProjectAnalytics"];
+                };
+            };
+        };
+    };
+    createBffUpload: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BffUploadRequest"];
+            };
+        };
+        responses: {
+            /** @description Default Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BffUploadTicket"];
+                };
+            };
+        };
+    };
+    completeBffUpload: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Default Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        ok: boolean;
+                    };
+                };
+            };
+        };
+    };
+    saveBffComment: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BffCommentRequest"];
+            };
+        };
+        responses: {
+            /** @description Default Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BffComment"];
+                };
+            };
+        };
+    };
+    deleteBffComment: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Default Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        ok: boolean;
+                    };
+                };
+            };
+        };
+    };
+    saveBffProjectAssignee: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BffAssigneeRequest"];
+            };
+        };
+        responses: {
+            /** @description Default Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BffAssigneeResponse"];
+                };
+            };
+        };
+    };
+    saveBffAssetTags: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                assetId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BffAssetTagsRequest"];
+            };
+        };
+        responses: {
+            /** @description Default Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BffAssetTagsRequest"];
+                };
+            };
+        };
+    };
+    saveBffProjectVisibility: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BffVisibilityRequest"];
+            };
+        };
+        responses: {
+            /** @description Default Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BffVisibilityRequest"];
+                };
+            };
+        };
+    };
     getBffProjectOptions: {
         parameters: {
             query?: never;
@@ -553,8 +1072,23 @@ export interface operations {
     };
 }
 export type ChangeBffProjectStatusPath = operations['changeBffProjectStatus']['parameters']['path'];
+export type CompleteBffUploadPath = operations['completeBffUpload']['parameters']['path'];
+export type CompleteBffUploadResponse = operations['completeBffUpload']['responses'][200]['content']['application/json'];
+export type CreateBffAssetCommentPath = operations['createBffAssetComment']['parameters']['path'];
+export type CreateBffProjectCommentPath = operations['createBffProjectComment']['parameters']['path'];
+export type DeleteBffCommentPath = operations['deleteBffComment']['parameters']['path'];
+export type DeleteBffCommentResponse = operations['deleteBffComment']['responses'][200]['content']['application/json'];
+export type GetBffProjectAnalyticsPath = operations['getBffProjectAnalytics']['parameters']['path'];
 export type GetBffProjectPath = operations['getBffProject']['parameters']['path'];
+export type ListBffAssetCommentsPath = operations['listBffAssetComments']['parameters']['path'];
+export type ListBffAssetCommentsQuery = operations['listBffAssetComments']['parameters']['query'];
+export type ListBffProjectCommentsPath = operations['listBffProjectComments']['parameters']['path'];
+export type ListBffProjectCommentsQuery = operations['listBffProjectComments']['parameters']['query'];
 export type ListBffProjectsQuery = operations['listBffProjects']['parameters']['query'];
 export type LogoutBffSessionResponse = operations['logoutBffSession']['responses'][200]['content']['application/json'];
+export type SaveBffAssetTagsPath = operations['saveBffAssetTags']['parameters']['path'];
+export type SaveBffCommentPath = operations['saveBffComment']['parameters']['path'];
+export type SaveBffProjectAssigneePath = operations['saveBffProjectAssignee']['parameters']['path'];
 export type SaveBffProjectMetaPath = operations['saveBffProjectMeta']['parameters']['path'];
 export type SaveBffProjectPath = operations['saveBffProject']['parameters']['path'];
+export type SaveBffProjectVisibilityPath = operations['saveBffProjectVisibility']['parameters']['path'];

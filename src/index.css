@@ -10,3 +10,14 @@
 
 /* @gedatou/editor 主题 token 层（oklch token + @theme 映射） */
 @import "@gedatou/editor/styles.css";
+
+/* 媒体灯箱 FLIP:整个弹窗从缩略图放大出现、缩回消失。--flip 由 JS 按点中的缩略图算出
+   (缩到缩略图大小 + 平移到缩略图中心);无 rect 时回退居中缩放。走 base-ui 的 data-open/data-closed。 */
+@keyframes lightbox-in {
+  from { transform: var(--flip, scale(0.92)); opacity: 0; }
+  to { transform: none; opacity: 1; }
+}
+@keyframes lightbox-out {
+  from { transform: none; opacity: 1; }
+  to { transform: var(--flip, scale(0.92)); opacity: 0; }
+}

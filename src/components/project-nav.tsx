@@ -21,6 +21,8 @@ import {
   PanelLeftOpen,
   Pencil,
   Share2,
+  ThumbsDown,
+  ThumbsUp,
   User,
 } from 'lucide-react'
 
@@ -32,13 +34,21 @@ import {
   PROJECTS_PAGE_SIZE,
   useChangeProjectStatus,
   useProject,
+  useProjectAnalytics,
   useProjectOptions,
   useProjectPages,
   useProjectStats,
+  useSaveAssetTags,
+  useSaveProjectAssignee,
   useSaveProjectMeta,
+  useSaveProjectVisibility,
 } from '@/api/projects/projects'
+import { AssetViewer } from '@/components/asset-viewer'
+import { useMediaLightbox } from '@/components/media-lightbox'
+import { CommentThread } from '@/components/comment-thread'
 import type { ProjectListParams } from '@/lib/query-keys'
 import { cn } from '@/lib/utils'
+import { useScrollFade } from '@/lib/use-scroll-fade'
 import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Separator } from '@/components/ui/separator'
@@ -101,44 +111,47 @@ const STATUS_STYLE: Record<string, string> = {
   rejected: 'bg-red-500/15 text-red-400',
 }
 
-// 每个状态可执行的 FSM 动作(对齐 xchangeai-workbench projectStatus.js;后端再校验合法性)
-const STATUS_ACTIONS: Record<string, { action: string; label: string; danger?: boolean }[]> = {
+// 每个状态可执行的 FSM 动作(对齐 xchangeai-workbench projectStatus.js;后端再校验合法性)。
+// tone=primary 是该状态下的主推动作;confirm 有值的动作点第一次只把菜单项文案换成问句,
+// 再点一次才真发 —— 与 legacy 一致,也比 window.confirm 好:不夺焦点、不阻塞其余菜单项。
+type StatusAction = { action: string; label: string; primary?: boolean; confirm?: string }
+const STATUS_ACTIONS: Record<string, StatusAction[]> = {
   created: [
-    { action: 'start_work', label: 'Start work' },
+    { action: 'start_work', label: 'Start work', primary: true },
     { action: 'prepare', label: 'Prepare project' },
   ],
   prepared: [
-    { action: 'start_work', label: 'Start work' },
+    { action: 'start_work', label: 'Start work', primary: true },
     { action: 'assign', label: 'Claim project' },
     { action: 'revert', label: 'Revert to created' },
   ],
   assigned: [
-    { action: 'start_work', label: 'Start work' },
+    { action: 'start_work', label: 'Start work', primary: true },
     { action: 'revert', label: 'Revert to prepared' },
   ],
   in_progress: [
-    { action: 'generate', label: 'Generate' },
-    { action: 'fail', label: 'Mark generation failed', danger: true },
+    { action: 'generate', label: 'Generate', primary: true },
+    { action: 'fail', label: 'Mark generation failed', confirm: 'Mark this project generation as failed?' },
     { action: 'revert', label: 'Revert to assigned' },
   ],
   generated: [
-    { action: 'submit_review', label: 'Submit for review' },
+    { action: 'submit_review', label: 'Submit for review', primary: true },
     { action: 'revert', label: 'Revert to in progress' },
   ],
   ready_for_review: [
-    { action: 'start_review', label: 'Start review' },
+    { action: 'start_review', label: 'Start review', primary: true },
     { action: 'revert', label: 'Revert to generated' },
   ],
   reviewing: [
-    { action: 'approve', label: 'Approve' },
-    { action: 'reject', label: 'Reject', danger: true },
+    { action: 'approve', label: 'Approve', primary: true },
+    { action: 'reject', label: 'Reject', confirm: 'Reject this project and send it back?' },
     { action: 'revert', label: 'Revert to ready for review' },
   ],
   approved: [
-    { action: 'publish', label: 'Publish' },
+    { action: 'publish', label: 'Publish', primary: true },
     { action: 'revert', label: 'Revert to reviewing' },
   ],
-  rejected: [{ action: 'reassign', label: 'Send back to creator' }],
+  rejected: [{ action: 'reassign', label: 'Send back to creator', primary: true }],
   published: [{ action: 'revert', label: 'Revert to approved' }],
 }
 
@@ -201,47 +214,6 @@ const readAnchor = (key: string): Anchor | null => {
   }
 }
 
-// scroll-fade:按滚动位置给视口加边缘渐隐 mask —— 只有该方向还有更多内容时才隐,
-// 到边则不隐(纵向=上下,横向=左右)。用于列表上下阴影 + 状态 tab 左右阴影。
-function useScrollFade(ref: React.RefObject<HTMLDivElement | null>, orientation: 'vertical' | 'horizontal') {
-  useEffect(() => {
-    const el = ref.current
-    if (!el) return
-    const FADE = 24
-    const apply = () => {
-      const start = orientation === 'vertical' ? el.scrollTop > 1 : el.scrollLeft > 1
-      const end =
-        orientation === 'vertical'
-          ? el.scrollTop + el.clientHeight < el.scrollHeight - 1
-          : el.scrollLeft + el.clientWidth < el.scrollWidth - 1
-      const dir = orientation === 'vertical' ? 'to bottom' : 'to right'
-      const mask = `linear-gradient(${dir}, ${start ? 'transparent' : '#000'}, #000 ${FADE}px, #000 calc(100% - ${FADE}px), ${end ? 'transparent' : '#000'})`
-      // 遮罩只有四种取值(两个布尔),值没变就别写 —— 改 mask-image 会让整层重绘,
-      // 每个 scroll 事件都写一次是滚动卡顿的另一个来源。
-      if (mask === lastMask) return
-      lastMask = mask
-      el.style.setProperty('mask-image', mask)
-      el.style.setProperty('-webkit-mask-image', mask)
-    }
-    let lastMask = ''
-    let raf = 0
-    const onScroll = () => {
-      if (!raf) raf = requestAnimationFrame(() => ((raf = 0), apply()))
-    }
-    apply()
-    el.addEventListener('scroll', onScroll, { passive: true })
-    // 视口尺寸不随内容变 —— 只观察 el,内容变高(切 view/edit、加载更多)时不会重算,
-    // 遮罩就停在旧状态。连内容容器一起观察才盖得住。
-    const ro = new ResizeObserver(apply)
-    ro.observe(el)
-    if (el.firstElementChild) ro.observe(el.firstElementChild)
-    return () => {
-      if (raf) cancelAnimationFrame(raf)
-      el.removeEventListener('scroll', onScroll)
-      ro.disconnect()
-    }
-  }, [ref, orientation])
-}
 
 export function ProjectNav() {
   // 「看的是哪个项目 + 哪份筛选」进 URL(见 routes/index.tsx),刷新/后退天然还原。
@@ -820,29 +792,128 @@ function ProjectStatusMenu({
   onAction: (action: string) => void
 }) {
   const actions = STATUS_ACTIONS[status] ?? []
+  // 待确认的动作。菜单关闭即清空 —— 下次打开必须从头再点一次,不留半截状态。
+  const [pendingConfirm, setPendingConfirm] = useState<string | null>(null)
   const pill = cn(
     'inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-xs font-medium capitalize',
     STATUS_STYLE[status] ?? 'bg-muted text-muted-foreground',
   )
   if (actions.length === 0) return <span className={pill}>{statusLabel(status)}</span>
   return (
-    <DropdownMenu>
+    <DropdownMenu onOpenChange={(open) => !open && setPendingConfirm(null)}>
       <DropdownMenuTrigger disabled={busy} className={cn(pill, 'cursor-pointer outline-none disabled:opacity-60')}>
         {busy ? <Loader2 className="size-3 animate-spin" /> : null}
         {statusLabel(status)}
         <ChevronDown className="size-3 opacity-70" />
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start" className="min-w-44">
-        {actions.map((a) => (
+        {actions.map((a) => {
+          const confirming = pendingConfirm === a.action
+          return (
+            <DropdownMenuItem
+              key={a.action}
+              // 第一次点危险动作只换文案,菜单要留着 → 阻止 Base UI 的默认关闭
+              closeOnClick={!a.confirm || confirming}
+              className={cn(
+                'text-xs',
+                a.confirm && 'text-destructive focus:text-destructive',
+                confirming && 'font-medium',
+                a.primary && 'font-medium text-foreground',
+              )}
+              onClick={() => {
+                if (a.confirm && !confirming) {
+                  setPendingConfirm(a.action)
+                  return
+                }
+                setPendingConfirm(null)
+                onAction(a.action)
+              }}
+            >
+              {confirming ? a.confirm : a.label}
+            </DropdownMenuItem>
+          )
+        })}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  )
+}
+
+// 观看数据只在项目公开出去之后才产生 —— 其余状态连请求都不该发。
+const PUBLISHED_STATUSES = new Set(['published'])
+
+// 项目分析:浏览 / 独立访客 / 分享,各带环比。上游是 frontend 域的端点,workbench 用户不一定
+// 有权限 → 失败静默不展示(retry:false),而不是在详情里挂一条红色错误。
+function AnalyticsPanel({ projectId, enabled }: { projectId: string; enabled: boolean }) {
+  const { data, isPending, isError } = useProjectAnalytics(projectId, enabled)
+  if (isError) return null
+  return (
+    <Group title="Audience">
+      {isPending ? (
+        <div className="flex items-center gap-2 py-1 text-xs text-muted-foreground">
+          <Loader2 className="size-3.5 animate-spin" /> 加载中…
+        </div>
+      ) : (
+        <div className="grid grid-cols-3 gap-2">
+          <Metric label="Views" value={<Trend m={data.views} />} />
+          <Metric label="Visitors" value={<Trend m={data.uniqueVisitors} />} />
+          <Metric label="Shares" value={<Trend m={data.shares} />} />
+        </div>
+      )}
+    </Group>
+  )
+}
+
+// 值 + 环比。changePercent 为 null(上期为 0,涨幅无从谈起)时只显示值,不写 "+∞%"。
+function Trend({ m }: { m: { value: number; changePercent?: number | null } }) {
+  const c = m.changePercent
+  return (
+    <span className="inline-flex items-baseline gap-1">
+      {m.value.toLocaleString()}
+      {c != null && c !== 0 ? (
+        <span className={cn('text-[10px]', c > 0 ? 'text-emerald-500' : 'text-red-500')}>
+          {c > 0 ? '+' : ''}
+          {Math.round(c)}%
+        </span>
+      ) : null}
+    </span>
+  )
+}
+
+// 可见性:与状态徽章同一套「药丸即菜单」的形态,免得详情面板里两种可改字段长得不一样。
+// 三档取自上游 ProjectVisibility 枚举。
+const VISIBILITY_OPTIONS = [
+  { value: 'public', label: 'Public' },
+  { value: 'agency', label: 'Agency' },
+  { value: 'owner_private', label: 'Owner private' },
+] as const
+
+function VisibilityMenu({
+  visibility,
+  busy,
+  onChange,
+}: {
+  visibility: string | null
+  busy: boolean
+  onChange: (v: 'public' | 'agency' | 'owner_private') => void
+}) {
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger
+        disabled={busy}
+        className="inline-flex cursor-pointer items-center gap-1 rounded outline-none hover:text-foreground disabled:opacity-60"
+      >
+        {busy ? <Loader2 className="size-3 animate-spin" /> : <Eye className="size-3" />}
+        {statusLabel(visibility || 'unknown')}
+        <ChevronDown className="size-3 opacity-70" />
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="start" className="min-w-36">
+        {VISIBILITY_OPTIONS.map((o) => (
           <DropdownMenuItem
-            key={a.action}
-            className={cn('text-xs', a.danger && 'text-destructive focus:text-destructive')}
-            onClick={() => {
-              if (a.danger && !window.confirm(`确定要「${a.label}」吗?`)) return
-              onAction(a.action)
-            }}
+            key={o.value}
+            className={cn('text-xs', o.value === visibility && 'font-medium text-foreground')}
+            onClick={() => o.value !== visibility && onChange(o.value)}
           >
-            {a.label}
+            {o.label}
           </DropdownMenuItem>
         ))}
       </DropdownMenuContent>
@@ -974,11 +1045,36 @@ function Metric({ label, value }: { label: string; value: React.ReactNode }) {
 
 // 资产缩略图网格。workbench 项目级没有这个网格(它把远端资产下载成本地照片再进图库),
 // 这里 detail 已经带回 url,直接铺出来比只显示 "N resources" 有用得多。
-function AssetGrid({ assets }: { assets: NonNullable<BffProjectDetail['assets']> }) {
+// 审核双签(管理员 + 被指派创作者)折成一个角标:任一方驳回即红,双方通过才绿,其余待定不画。
+// 待定不画是刻意的 —— 24rem 的面板里,给"还没发生的事"占像素不划算(legacy 用虚线圈,那是宽屏审核页)。
+function ReviewBadge({ admin, assignee }: { admin: string | null; assignee: string | null }) {
+  if (!admin && !assignee) return null
+  const rejected = admin === 'rejected' || assignee === 'rejected'
+  const approved = admin === 'approved' && assignee === 'approved'
+  if (!rejected && !approved) return null
+  const Icon = rejected ? ThumbsDown : ThumbsUp
+  return (
+    <span
+      title={`admin: ${admin ?? '—'} · assignee: ${assignee ?? '—'}`}
+      className={cn(
+        'absolute bottom-0.5 left-0.5 inline-flex items-center rounded p-0.5 text-white',
+        rejected ? 'bg-red-600/80' : 'bg-emerald-600/80',
+      )}
+    >
+      <Icon className="size-2.5" />
+    </span>
+  )
+}
+
+// 瓦片点开是灯箱而非新标签页(对齐 legacy:点缩略图开 ImageLightbox,下载是灯箱里的动作)。
+// 灯箱按扁平下标翻页,所以这里两组共用一份 assets 数组,只是分段渲染。
+function AssetGrid({ projectId, assets }: { projectId: string; assets: NonNullable<BffProjectDetail['assets']> }) {
   const groups = [
     { key: 'creator', label: 'Resources' },
     { key: 'agent', label: 'Clips' },
   ] as const
+  const viewer = useMediaLightbox()
+  const saveTags = useSaveAssetTags()
   return (
     <>
       {groups.map(({ key, label }) => {
@@ -988,27 +1084,41 @@ function AssetGrid({ assets }: { assets: NonNullable<BffProjectDetail['assets']>
           <Group key={key} title={`${label} (${list.length})`}>
             <div className="grid grid-cols-4 gap-1.5">
               {list.map((a) => (
-                <a
+                <button
                   key={a.id}
-                  href={a.url}
-                  target="_blank"
-                  rel="noreferrer"
+                  type="button"
+                  onClick={(e) => viewer.open(assets.indexOf(a), e)}
                   title={[a.name, a.tags?.join(', ')].filter(Boolean).join(' · ') || undefined}
                   className="relative aspect-square overflow-hidden rounded-md ring-offset-background hover:ring-2 hover:ring-ring focus-visible:ring-2 focus-visible:ring-ring"
                 >
-                  <Thumb url={a.url} kind={a.kind} className="size-full rounded-none" />
+                  {/* 有海报就贴海报 —— 一张图比让 20 个 <video> 各自拉 metadata 便宜得多 */}
+                  <Thumb
+                    url={a.thumbnailUrl || a.url}
+                    kind={a.thumbnailUrl ? 'image' : a.kind}
+                    className="size-full rounded-none"
+                  />
+                  <ReviewBadge admin={a.adminReview ?? null} assignee={a.assigneeReview ?? null} />
                   {a.commentCount > 0 ? (
                     <span className="absolute right-0.5 bottom-0.5 inline-flex items-center gap-0.5 rounded bg-black/70 px-1 text-[10px] text-white">
                       <MessageSquare className="size-2.5" />
                       {a.commentCount}
                     </span>
                   ) : null}
-                </a>
+                </button>
               ))}
             </div>
           </Group>
         )
       })}
+      <AssetViewer
+        assets={assets}
+        index={viewer.index}
+        rect={viewer.rect}
+        closing={viewer.closing}
+        onIndexChange={viewer.onIndexChange}
+        onClose={viewer.close}
+        onTagsChange={(assetId, tags) => saveTags.mutate({ projectId, assetId, tags })}
+      />
     </>
   )
 }
@@ -1188,6 +1298,8 @@ function DetailContent({
   const [editing, setEditing] = useState(false)
   const options = useProjectOptions(visible && editing)
   const saveMeta = useSaveProjectMeta()
+  const saveVisibility = useSaveProjectVisibility()
+  const saveAssignee = useSaveProjectAssignee()
   const viewportRef = useRef<HTMLDivElement>(null)
   useScrollFade(viewportRef, 'vertical') // 详情上下阴影,与列表同一套
   const d = project?.detail
@@ -1248,6 +1360,20 @@ function DetailContent({
                     busy={statusBusy}
                     onAction={(action) => onChangeStatus(project.id, action)}
                   />
+                  {d.statusUpdatedBy ? (
+                    <span className="text-[11px] text-muted-foreground">由 {d.statusUpdatedBy} 变更</span>
+                  ) : null}
+                  {/* 被拒时直达 xchangeai 评审页看驳回意见 —— 否则只能自己去后台翻 */}
+                  {d.reviewUrl ? (
+                    <a
+                      href={d.reviewUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="inline-flex items-center gap-1 text-[11px] text-primary hover:underline"
+                    >
+                      查看驳回意见 <ExternalLink className="size-3" />
+                    </a>
+                  ) : null}
                 </div>
               </div>
 
@@ -1268,9 +1394,11 @@ function DetailContent({
                 <span className="inline-flex items-center gap-1">
                   <Share2 className="size-3" /> {d.forwardCount} forwards
                 </span>
-                <span className="inline-flex items-center gap-1">
-                  <Eye className="size-3" /> {statusLabel(d.visibility || 'unknown')}
-                </span>
+                <VisibilityMenu
+                  visibility={d.visibility ?? null}
+                  busy={saveVisibility.isPending}
+                  onChange={(visibility) => saveVisibility.mutate({ id: project.id, visibility })}
+                />
               </div>
 
               <Separator />
@@ -1310,14 +1438,37 @@ function DetailContent({
               <Group title="People">
                 <Field label="Agency" value={d.agency} />
                 <Field label="Agent" value={d.agent} />
-                <Field label="Assigned creator" value={d.assignee} />
+                {/* 就地认领/取消指派:改一个人不必为此进整张编辑表单(那是 15 个字段的全量替换)。
+                    认领只在 prepared 态给 —— 上游 assignProjectToSelf 别的状态一律 409,
+                    与其让人点了撞错,不如不给按钮(legacy 的状态菜单也只在 prepared 提供 Claim)。
+                    取消指派没有状态约束,任何时候都能撤。 */}
+                <Field
+                  label="Assigned creator"
+                  value={
+                    <span className="inline-flex items-center gap-1.5">
+                      {d.assignee}
+                      {d.assignee || d.status === 'prepared' ? (
+                        <button
+                          type="button"
+                          disabled={saveAssignee.isPending}
+                          onClick={() =>
+                            saveAssignee.mutate({ id: project.id, assigneeId: d.assignee ? null : 'me' })
+                          }
+                          className="text-primary hover:underline disabled:opacity-50"
+                        >
+                          {saveAssignee.isPending ? '…' : d.assignee ? '取消指派' : '认领'}
+                        </button>
+                      ) : null}
+                    </span>
+                  }
+                />
                 <Field label="Created by" value={d.createdBy} />
               </Group>
 
               {d.assets && d.assets.length > 0 ? (
                 <>
                   <Separator />
-                  <AssetGrid assets={d.assets} />
+                  <AssetGrid projectId={project.id} assets={d.assets} />
                 </>
               ) : null}
 
@@ -1327,6 +1478,19 @@ function DetailContent({
                 <Field label="Created" value={absTime(d.createdAt)} />
                 <Field label="Updated" value={`${absTime(d.updatedAt)} (${relTime(d.updatedAt)})`} />
               </Group>
+
+              {/* 只有发布过的项目才有观看数据,没发布的连请求都不发 */}
+              {PUBLISHED_STATUSES.has(d.status) ? (
+                <>
+                  <Separator />
+                  <AnalyticsPanel projectId={project.id} enabled={visible} />
+                </>
+              ) : null}
+
+              <Separator />
+
+              {/* 详情折叠时不拉评论 —— 面板不可见时这是一次纯浪费的请求 */}
+              <CommentThread entity="project" id={project.id} enabled={visible} />
             </div>
           )}
         </div>
