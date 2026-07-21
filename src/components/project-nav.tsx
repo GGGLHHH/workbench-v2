@@ -4,6 +4,7 @@ import { useVirtualizer } from '@tanstack/react-virtual'
 import useEmblaCarousel from 'embla-carousel-react'
 import { useLocalStorageState } from 'ahooks'
 import { format, formatDistanceToNow } from 'date-fns'
+import { useTranslation } from 'react-i18next'
 import {
   Building2,
   ChevronDown,
@@ -48,6 +49,7 @@ import {
 import { toast } from 'sonner'
 import { addProjectAssetToEditor } from '@/lib/add-to-editor'
 import { AssetViewer } from '@/components/asset-viewer'
+import { LanguageToggle } from '@/components/language-toggle'
 import { useMediaLightbox } from '@/components/media-lightbox'
 import { CommentPane } from '@/components/comment-pane'
 import type { ProjectListParams } from '@/lib/query-keys'
@@ -221,6 +223,7 @@ const readAnchor = (key: string): Anchor | null => {
 
 
 export function ProjectNav() {
+  const { t } = useTranslation()
   // 「看的是哪个项目 + 哪份筛选」进 URL(见 routes/index.tsx),刷新/后退天然还原。
   const params = useSearch({ from: '/' })
   const navigate = useNavigate({ from: '/' })
@@ -298,7 +301,7 @@ export function ProjectNav() {
           // toggle 固定挂在最左侧 section 顶部 —— 无论展开/收起,它在屏幕上的位置基本不动
           <Rail
             icon={<FolderClosed className="size-4" />}
-            label="项目"
+            label={t('projectNav.projects')}
             onExpand={() => openPanel('list')}
             topAction={<CollapseToggle collapsed={collapsed} onToggle={() => setCollapsed((v) => !v)} />}
           />
@@ -330,7 +333,7 @@ export function ProjectNav() {
         rail={
           <Rail
             icon={<Info className="size-4" />}
-            label="详情"
+            label={t('projectNav.details')}
             disabled={!selectedId}
             onExpand={() => selectedId && openPanel('detail')}
           />
@@ -414,7 +417,8 @@ function Layer({
 
 // 收起/展开整个侧边栏的开关。收起态由它还原到 active 那一栏。
 function CollapseToggle({ collapsed, onToggle }: { collapsed: boolean; onToggle: () => void }) {
-  const label = collapsed ? '展开侧边栏' : '收起侧边栏'
+  const { t } = useTranslation()
+  const label = collapsed ? t('projectNav.expandSidebar') : t('projectNav.collapseSidebar')
   return (
     <Button
       variant="ghost"
@@ -444,6 +448,7 @@ function Rail({
   disabled?: boolean
   topAction?: React.ReactNode
 }) {
+  const { t } = useTranslation()
   return (
     <div className="flex h-full w-full flex-col items-center">
       {topAction ? <div className="flex h-11 shrink-0 items-center">{topAction}</div> : null}
@@ -452,7 +457,7 @@ function Rail({
         disabled={disabled}
         onClick={onExpand}
         className="flex w-full min-h-0 flex-1 flex-col items-center gap-3 py-3 transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground disabled:pointer-events-none disabled:opacity-40"
-        aria-label={`展开${label}`}
+        aria-label={t('projectNav.expandPanel', { label })}
       >
         {icon}
         <span className="text-xs tracking-wider text-muted-foreground [writing-mode:vertical-rl]">
@@ -497,6 +502,7 @@ const ListHeader = memo(function ListHeader({
   onToggleCollapse: () => void
   tabsViewportRef: React.RefObject<HTMLDivElement | null>
 }) {
+  const { t } = useTranslation()
   return (
     <>
       {/* 头部:标题 + 同步 + 搜索 + 状态筛选 tab */}
@@ -504,7 +510,8 @@ const ListHeader = memo(function ListHeader({
         <div className="flex items-center gap-2 px-1">
           {/* 与收起态 rail 顶部的 toggle 同一位置(最左),避免来回切时按钮跳位 */}
           <CollapseToggle collapsed={false} onToggle={onToggleCollapse} />
-          <span className="flex-1 text-sm font-semibold">项目</span>
+          <span className="flex-1 text-sm font-semibold">{t('projectNav.projects')}</span>
+          <LanguageToggle />
           <Button
             variant="ghost"
             size="sm"
@@ -512,14 +519,14 @@ const ListHeader = memo(function ListHeader({
             disabled={syncing}
             onClick={onSync}
           >
-            {syncing ? <Loader2 className="size-3.5 animate-spin" /> : <CloudDownload className="size-3.5" />} 同步
+            {syncing ? <Loader2 className="size-3.5 animate-spin" /> : <CloudDownload className="size-3.5" />} {t('projectNav.sync')}
           </Button>
         </div>
         <SearchInput
           value={search}
           onValueChange={onSearch}
-          placeholder="搜索项目…"
-          aria-label="搜索项目"
+          placeholder={t('projectNav.searchPlaceholder')}
+          aria-label={t('projectNav.searchAria')}
           inputClassName="h-8 text-sm"
         />
         {/* tab 条本来就有左右渐隐,再加一条横向滚动条只会挤掉半行高度 */}
@@ -607,6 +614,7 @@ function ListContent({
   onToggleCollapse: () => void
   visible: boolean
 }) {
+  const { t } = useTranslation()
   const viewportRef = useRef<HTMLDivElement>(null)
   const tabsViewportRef = useRef<HTMLDivElement>(null)
   useScrollFade(viewportRef, 'vertical') // 列表上下阴影
@@ -739,12 +747,12 @@ function ListContent({
       <ScrollArea viewportRef={viewportRef} className="min-h-0 flex-1">
         {isPending ? (
           <div className="flex items-center gap-2 p-3 text-sm text-muted-foreground">
-            <Loader2 className="size-4 animate-spin" /> 加载中…
+            <Loader2 className="size-4 animate-spin" /> {t('common.loading')}
           </div>
         ) : isError ? (
-          <div className="p-3 text-sm text-destructive">加载失败</div>
+          <div className="p-3 text-sm text-destructive">{t('common.loadFailed')}</div>
         ) : total === 0 ? (
-          <div className="p-3 text-sm text-muted-foreground">没有匹配的项目</div>
+          <div className="p-3 text-sm text-muted-foreground">{t('projectNav.noMatchingProjects')}</div>
         ) : (
           // 撑满整份 total 的高度 —— 滚动条据此忠实反映"在 N 条里的第几条"。
           // 位移只写在外层一个节点上(TanStack Virtual 官方推荐):原先每行各写一个
@@ -849,13 +857,14 @@ const PUBLISHED_STATUSES = new Set(['published'])
 // 项目分析:浏览 / 独立访客 / 分享,各带环比。上游是 frontend 域的端点,workbench 用户不一定
 // 有权限 → 失败静默不展示(retry:false),而不是在详情里挂一条红色错误。
 function AnalyticsPanel({ projectId, enabled }: { projectId: string; enabled: boolean }) {
+  const { t } = useTranslation()
   const { data, isPending, isError } = useProjectAnalytics(projectId, enabled)
   if (isError) return null
   return (
     <Group title="Audience">
       {isPending ? (
         <div className="flex items-center gap-2 py-1 text-xs text-muted-foreground">
-          <Loader2 className="size-3.5 animate-spin" /> 加载中…
+          <Loader2 className="size-3.5 animate-spin" /> {t('common.loading')}
         </div>
       ) : (
         <div className="grid grid-cols-3 gap-2">
@@ -1074,6 +1083,7 @@ function ReviewBadge({ admin, assignee }: { admin: string | null; assignee: stri
 // 瓦片点开是灯箱而非新标签页(对齐 legacy:点缩略图开 ImageLightbox,下载是灯箱里的动作)。
 // 灯箱按扁平下标翻页,所以这里两组共用一份 assets 数组,只是分段渲染。
 function AssetGrid({ projectId, assets }: { projectId: string; assets: NonNullable<BffProjectDetail['assets']> }) {
+  const { t } = useTranslation()
   const groups = [
     { key: 'creator', label: 'Resources' },
     { key: 'agent', label: 'Clips' },
@@ -1094,9 +1104,9 @@ function AssetGrid({ projectId, assets }: { projectId: string; assets: NonNullab
         // contentId 是 BFF 新增字段,生成类型暂未含 → cast
         contentId: (a as { contentId?: string | null }).contentId,
       })
-      toast.success(`已加入编辑器:${a.name || '素材'}`)
+      toast.success(t('projectNav.addedToEditor', { name: a.name || t('projectNav.assetFallback') }))
     } catch {
-      toast.error('加入编辑器失败')
+      toast.error(t('projectNav.addToEditorFailed'))
     } finally {
       setAdding(null)
     }
@@ -1134,8 +1144,8 @@ function AssetGrid({ projectId, assets }: { projectId: string; assets: NonNullab
                   {/* hover 显现:加入右侧编辑器(独立按钮,与打开灯箱的瓦片同级,避免嵌套) */}
                   <button
                     type="button"
-                    aria-label="加入编辑器"
-                    title="加入编辑器"
+                    aria-label={t('projectNav.addToEditor')}
+                    title={t('projectNav.addToEditor')}
                     disabled={adding === a.id}
                     onClick={(e) => {
                       e.stopPropagation()
@@ -1358,6 +1368,7 @@ function DetailContent({
   onChangeStatus: (id: string, action: string) => void
   statusBusy: boolean
 }) {
+  const { t } = useTranslation()
   const [editing, setEditing] = useState(false)
   // 草稿提在这层(见 MetaDraft):乐观保存立刻关表单,失败原样重开都不丢用户输入。
   const [draft, setDraft] = useState<MetaDraft | null>(null)
@@ -1456,7 +1467,7 @@ function DetailContent({
     <PanelBody>
       <div className="flex h-11 shrink-0 items-center gap-2 border-b px-3">
         <Info className="size-4" />
-        <span className="flex-1 truncate text-sm font-medium">详情</span>
+        <span className="flex-1 truncate text-sm font-medium">{t('projectNav.details')}</span>
         {d && !editing ? (
           <>
             <Button
@@ -1469,12 +1480,12 @@ function DetailContent({
                 emblaApi?.scrollTo(0) // 编辑表单在「详情」slide,正停在评论页则滑回去
               }}
             >
-              <Pencil className="size-3.5" /> 编辑
+              <Pencil className="size-3.5" /> {t('common.edit')}
             </Button>
           </>
         ) : null}
         <Button variant="ghost" size="sm" className="h-7 gap-1 px-2 text-xs" onClick={onBack}>
-          <ChevronLeft className="size-3.5" /> 列表
+          <ChevronLeft className="size-3.5" /> {t('projectNav.list')}
         </Button>
       </div>
       <Tabs
@@ -1495,7 +1506,7 @@ function DetailContent({
             }}
             onMouseEnter={() => hoverTab(0)}
           >
-            详情
+            {t('projectNav.details')}
           </TabsTrigger>
           <TabsTrigger
             value="comments"
@@ -1504,7 +1515,7 @@ function DetailContent({
             }}
             onMouseEnter={() => hoverTab(1)}
           >
-            评论{d?.commentCount ? ` (${d.commentCount})` : ''}
+            {t('projectNav.comments')}{d?.commentCount ? ` (${d.commentCount})` : ''}
           </TabsTrigger>
           <span
             ref={underlineRef}
@@ -1520,7 +1531,7 @@ function DetailContent({
                 <div className="p-3">
                   {loading || !project || !d ? (
                     <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                      <Loader2 className="size-4 animate-spin" /> 加载中…
+                      <Loader2 className="size-4 animate-spin" /> {t('common.loading')}
                     </div>
                   ) : editing && draft ? (
                     <MetaForm
@@ -1554,7 +1565,7 @@ function DetailContent({
                             onAction={(action) => onChangeStatus(project.id, action)}
                           />
                           {d.statusUpdatedBy ? (
-                            <span className="text-[11px] text-muted-foreground">由 {d.statusUpdatedBy} 变更</span>
+                            <span className="text-[11px] text-muted-foreground">{t('projectNav.changedBy', { by: d.statusUpdatedBy })}</span>
                           ) : null}
                           {/* 被拒时直达 xchangeai 评审页看驳回意见 —— 否则只能自己去后台翻 */}
                           {d.reviewUrl ? (
@@ -1564,7 +1575,7 @@ function DetailContent({
                               rel="noreferrer"
                               className="inline-flex items-center gap-1 text-[11px] text-primary hover:underline"
                             >
-                              查看驳回意见 <ExternalLink className="size-3" />
+                              {t('projectNav.viewRejection')} <ExternalLink className="size-3" />
                             </a>
                           ) : null}
                         </div>
@@ -1649,7 +1660,7 @@ function DetailContent({
                                   }
                                   className="text-primary hover:underline disabled:opacity-50"
                                 >
-                                  {saveAssignee.isPending ? '…' : d.assignee ? '取消指派' : '认领'}
+                                  {saveAssignee.isPending ? '…' : d.assignee ? t('projectNav.unassign') : t('projectNav.claim')}
                                 </button>
                               ) : null}
                             </span>
@@ -1696,7 +1707,7 @@ function DetailContent({
                 />
               ) : (
                 <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                  <Loader2 className="size-4 animate-spin" /> 加载中…
+                  <Loader2 className="size-4 animate-spin" /> {t('common.loading')}
                 </div>
               )}
             </div>

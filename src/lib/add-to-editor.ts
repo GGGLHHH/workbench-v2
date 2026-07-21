@@ -1,5 +1,6 @@
 import type { EditorStarterAsset, EditorStarterItem, Track, UndoableState } from '@gedatou/shared'
 import { editorStore } from '@/editor-app'
+import i18n from '@/i18n'
 
 // 把「项目详情里的一个资产」加入右侧编辑器:建素材(EditorStarterAsset)+ 一条时间线条目
 // (EditorStarterItem),追加到首条轨道末尾。字节不搬 —— 素材 url 用稳定的 /bff/content/<contentId>
@@ -25,7 +26,7 @@ function probeMedia(url: string, kind: string): Promise<Probe> {
     if (kind === 'image') {
       const img = new Image()
       img.onload = () => resolve({ width: img.naturalWidth || 1920, height: img.naturalHeight || 1080, duration: 0, hasAudio: false })
-      img.onerror = () => reject(new Error('探测图片失败'))
+      img.onerror = () => reject(new Error(i18n.t('addToEditor.probeImageFailed')))
       img.src = url
     } else {
       // video / audio 都用 video 元素读 metadata(audio 的 videoWidth/Height 为 0)
@@ -40,7 +41,7 @@ function probeMedia(url: string, kind: string): Promise<Probe> {
           // 无可靠的浏览器 API 判有无音轨 → 默认有(用户可在编辑器静音)
           hasAudio: true,
         })
-      el.onerror = () => reject(new Error('探测媒体失败'))
+      el.onerror = () => reject(new Error(i18n.t('addToEditor.probeMediaFailed')))
       el.src = url
     }
   })

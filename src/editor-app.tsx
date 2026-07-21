@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react'
+import { useTranslation } from 'react-i18next'
 import { useSearch } from '@tanstack/react-router'
 import { Clapperboard, Loader2, UploadCloud } from 'lucide-react'
 import { toast } from 'sonner'
@@ -48,6 +49,7 @@ if (import.meta.env.DEV) {
 // 发布:把本地 server 素材上传平台 + 改写引用 + 推时间线（读已存态，故内部先保存）。
 // 原在 project-nav 详情顶栏,移进编辑器工具栏 —— 项目级动作,但紧挨保存/渲染更顺手。
 function PublishButton({ id }: { id: string | null }) {
+  const { t } = useTranslation()
   const publish = usePublishProject()
   return (
     <Button
@@ -55,10 +57,10 @@ function PublishButton({ id }: { id: string | null }) {
       size="sm"
       disabled={!id || publish.isPending}
       onClick={() => id && publish.mutate({ id })}
-      title="发布素材到平台"
+      title={t('editorApp.publishAssetsTitle')}
     >
       {publish.isPending ? <Loader2 className="size-4 animate-spin" /> : <UploadCloud className="size-4" />}
-      发布
+      {t('editorApp.publish')}
     </Button>
   )
 }
@@ -66,6 +68,7 @@ function PublishButton({ id }: { id: string | null }) {
 // 交付:取编辑器最新渲染产物 URL → BFF 绑 creator-asset。renderingTasks 现经 useEditor
 // 从 context 取(context-connected),不再伸手进 editorStore 单例。
 function DeliverButton({ id }: { id: string | null }) {
+  const { t } = useTranslation()
   const deliver = useDeliverProject()
   const renderingTasks = useEditor((s) => s.renderingTasks)
   return (
@@ -75,17 +78,17 @@ function DeliverButton({ id }: { id: string | null }) {
       disabled={!id || deliver.isPending}
       onClick={() => {
         if (!id) return
-        const done = [...renderingTasks].reverse().find((t) => t.status === 'done' && t.url)
+        const done = [...renderingTasks].reverse().find((task) => task.status === 'done' && task.url)
         if (!done?.url) {
-          toast.error('请先在编辑器渲染导出成片')
+          toast.error(t('editorApp.deliverRenderFirst'))
           return
         }
         deliver.mutate({ id, videoUrl: done.url })
       }}
-      title="交付成片到平台"
+      title={t('editorApp.deliverVideoTitle')}
     >
       {deliver.isPending ? <Loader2 className="size-4 animate-spin" /> : <Clapperboard className="size-4" />}
-      交付
+      {t('editorApp.deliver')}
     </Button>
   )
 }

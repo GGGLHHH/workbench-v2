@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { Dialog as DialogPrimitive } from '@base-ui/react/dialog'
 import { ChevronLeft, ChevronRight, Download, X } from 'lucide-react'
 
@@ -51,6 +52,7 @@ export function MediaLightbox({
   sidebar?: React.ReactNode
   children?: React.ReactNode
 }) {
+  const { t } = useTranslation()
   const open = index !== null
 
   // 冻结最后一次展示的 items/index/rect,供 base-ui 退出过渡期间(open 已 false)继续渲染内容。
@@ -117,7 +119,7 @@ export function MediaLightbox({
             <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-3">
               <div className="flex min-w-0 flex-col gap-0.5 pr-8">
                 <DialogPrimitive.Title className="truncate text-sm leading-none font-medium">
-                  {item.name || '未命名文件'}
+                  {item.name || t('lightbox.untitledFile')}
                 </DialogPrimitive.Title>
                 <DialogPrimitive.Description className="text-xs text-muted-foreground">
                   {subtitle ? `${subtitle} · ` : ''}
@@ -145,7 +147,7 @@ export function MediaLightbox({
                     className="h-7 gap-1 px-2 text-xs"
                     render={<a href={item.url} download={item.name ?? undefined} target="_blank" rel="noreferrer" />}
                   >
-                    <Download className="size-3.5" /> 下载
+                    <Download className="size-3.5" /> {t('lightbox.download')}
                   </Button>
                 </div>
               </div>
@@ -159,7 +161,7 @@ export function MediaLightbox({
 
             <DialogPrimitive.Close render={<Button variant="ghost" size="icon-sm" className="absolute top-2 right-2" />}>
               <X className="size-4" />
-              <span className="sr-only">关闭</span>
+              <span className="sr-only">{t('lightbox.close')}</span>
             </DialogPrimitive.Close>
         </DialogPrimitive.Popup>
       </DialogPrimitive.Portal>
@@ -168,6 +170,7 @@ export function MediaLightbox({
 }
 
 function Nav({ side, disabled, onClick }: { side: 'left' | 'right'; disabled: boolean; onClick: () => void }) {
+  const { t } = useTranslation()
   if (disabled) return null
   const Icon = side === 'left' ? ChevronLeft : ChevronRight
   return (
@@ -175,7 +178,7 @@ function Nav({ side, disabled, onClick }: { side: 'left' | 'right'; disabled: bo
       variant="ghost"
       size="icon"
       onClick={onClick}
-      aria-label={side === 'left' ? '上一个' : '下一个'}
+      aria-label={side === 'left' ? t('lightbox.prev') : t('lightbox.next')}
       className={cn(
         'absolute top-1/2 z-10 size-8 -translate-y-1/2 bg-background/70 hover:bg-background',
         side === 'left' ? 'left-1' : 'right-1',

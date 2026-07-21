@@ -2,6 +2,7 @@ import ky, { isNetworkError, isTimeoutError } from 'ky'
 import type { Options as KyOptions } from 'ky'
 import { toast } from 'sonner'
 import { refreshBffSession } from '@/generated/api'
+import i18n from '@/i18n'
 import { globalRouter } from '@/lib/global-router'
 import { queryClient } from '@/lib/query-client'
 import { queryKeys } from '@/lib/query-keys'
@@ -82,7 +83,7 @@ const isAuthRecoveryRequest = (request: Request) =>
 // 导航落地后清全部缓存(下次登录从干净状态开始)。
 function handleAuthFailure(): void {
   queryClient.setQueryData(queryKeys.session(), null)
-  toast.error('会话已过期', { id: 'session-expired', description: '请重新登录' })
+  toast.error(i18n.t('apiClient.sessionExpired'), { id: 'session-expired', description: i18n.t('apiClient.reLogin') })
 
   const current = globalRouter.instance?.state.location
   let navigation: Promise<unknown> | undefined
@@ -104,7 +105,7 @@ function resetAuthFailureState(): void {
 // 403:会话有效但角色无权 —— 失效会话让守卫下次重评 + 提示,但绝不跳转(可能只是当前页某个操作被禁)。
 function handlePermissionDenied(): void {
   void queryClient.invalidateQueries({ queryKey: queryKeys.session() })
-  toast.error('没有权限执行此操作', { id: 'permission-denied' })
+  toast.error(i18n.t('apiClient.noPermission'), { id: 'permission-denied' })
 }
 
 // 生成代码走完整路径(/api/v1/... 与 /bff/...)——两个根,故 ky 不设 prefix；

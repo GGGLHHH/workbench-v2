@@ -1,0 +1,127 @@
+{
+  "addToEditor": {
+    "probeImageFailed": "Failed to probe image",
+    "probeMediaFailed": "Failed to probe media"
+  },
+  "apiClient": {
+    "noPermission": "You do not have permission to perform this action",
+    "reLogin": "Please log in again",
+    "sessionExpired": "Your session has expired"
+  },
+  "assetViewer": {
+    "addRoomTag": "Add room tags",
+    "confirm": "OK",
+    "noTags": "No tags",
+    "roomTag": "Room tags",
+    "searchTagPlaceholder": "Search room tags…"
+  },
+  "commentComposer": {
+    "addAttachment": "Add attachment",
+    "attachmentHint": "Up to {{count}}, each no larger than {{size}} MB",
+    "attachmentTooLarge": "Each attachment must not exceed {{size}} MB",
+    "placeholder": "Write a comment…",
+    "removeAttachment": "Remove attachment {{name}}",
+    "submit": "Post comment"
+  },
+  "commentItem": {
+    "attachment": "Attachment",
+    "collapse": "Collapse",
+    "commentAttachments": "Comment attachments",
+    "confirmDeleteComment": "Confirm delete comment",
+    "dateMd": "MMM d",
+    "dateYmd": "MMM d, yyyy",
+    "deleteComment": "Delete comment",
+    "editComment": "Edit comment",
+    "edited": "edited",
+    "expand": "Expand",
+    "justNow": "just now",
+    "today": "Today",
+    "yesterday": "Yesterday"
+  },
+  "commentPane": {
+    "empty": "No comments yet — say something",
+    "loadFailed": "Failed to load comments",
+    "loadingComments": "Loading comments…",
+    "totalCount": "{{count}} comments"
+  },
+  "common": {
+    "cancel": "Cancel",
+    "confirm": "Confirm",
+    "delete": "Delete",
+    "edit": "Edit",
+    "loadFailed": "Failed to load",
+    "loading": "Loading…",
+    "retry": "Retry",
+    "save": "Save"
+  },
+  "editorApp": {
+    "deliver": "Deliver",
+    "deliverRenderFirst": "Render and export the video in the editor first",
+    "deliverVideoTitle": "Deliver video to platform",
+    "publish": "Publish",
+    "publishAssetsTitle": "Publish assets to platform"
+  },
+  "lightbox": {
+    "close": "Close",
+    "download": "Download",
+    "next": "Next",
+    "prev": "Previous",
+    "untitledFile": "Untitled file"
+  },
+  "login": {
+    "identifier": "Account",
+    "identifierMin": "Account must be at least 3 characters",
+    "identifierRequired": "Please enter your account",
+    "loginFailed": "Sign in failed",
+    "loginSuccess": "Signed in successfully",
+    "password": "Password",
+    "passwordMin": "Password must be at least 3 characters",
+    "passwordRequired": "Please enter your password",
+    "submit": "Sign in",
+    "submitting": "Signing in…",
+    "subtitle": "Sign in with your XChangeAI account",
+    "title": "Sign in to Workbench"
+  },
+  "projectNav": {
+    "addToEditor": "Add to editor",
+    "addToEditorFailed": "Failed to add to editor",
+    "addedToEditor": "Added to editor: {{name}}",
+    "assetFallback": "asset",
+    "changedBy": "Changed by {{by}}",
+    "claim": "Claim",
+    "collapseSidebar": "Collapse sidebar",
+    "comments": "Comments",
+    "details": "Details",
+    "expandPanel": "Expand {{label}}",
+    "expandSidebar": "Expand sidebar",
+    "list": "List",
+    "noMatchingProjects": "No matching projects",
+    "projects": "Projects",
+    "searchAria": "Search projects",
+    "searchPlaceholder": "Search projects…",
+    "sync": "Sync",
+    "unassign": "Unassign",
+    "viewRejection": "View rejection notes"
+  },
+  "projects": {
+    "assignFailed": "Assignment failed",
+    "attachmentUploadFailed": "Attachment upload failed ({{status}})",
+    "commentDeleteFailed": "Failed to delete comment",
+    "commentEditFailed": "Failed to edit comment",
+    "commentFailed": "Failed to post comment",
+    "deliverFailed": "Delivery failed",
+    "delivered": "Final cut delivered to platform",
+    "publishFailed": "Publish failed",
+    "published": "Published to platform: uploaded {{uploaded}} assets",
+    "publishedSkipped": ", skipped {{skipped}}",
+    "saveFailed": "Save failed",
+    "statusChangeFailed": "Status change failed",
+    "tagSaveFailed": "Failed to save tags",
+    "visibilityUpdateFailed": "Failed to update visibility"
+  },
+  "tagSelect": {
+    "empty": "No matching tags",
+    "loadingMore": "Loading more…",
+    "searchPlaceholder": "Search tags…"
+  }
+}

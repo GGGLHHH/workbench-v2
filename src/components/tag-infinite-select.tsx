@@ -1,4 +1,5 @@
 import { useCallback, useMemo, type ReactNode } from 'react'
+import { useTranslation } from 'react-i18next'
 
 import type { BffTag } from '@/generated/api-types'
 import { useInfiniteTagOptions } from '@/api/tags'
@@ -53,6 +54,7 @@ interface TagInfiniteSelectCommonProps {
 export type TagInfiniteSelectProps = TagInfiniteSelectCommonProps & ControllableSelectionProps<BffTag>
 
 export function TagInfiniteSelect(props: TagInfiniteSelectProps) {
+  const { t } = useTranslation()
   const {
     children,
     disabled = false,
@@ -60,7 +62,7 @@ export function TagInfiniteSelect(props: TagInfiniteSelectProps) {
     align = 'start',
     pageSize,
     commitOnClose = false,
-    searchPlaceholder = '搜索标签…',
+    searchPlaceholder = t('tagSelect.searchPlaceholder'),
     selectedItems,
     slots,
   } = props
@@ -98,12 +100,12 @@ export function TagInfiniteSelect(props: TagInfiniteSelectProps) {
   // 内置中文状态插槽(始终渲染,按状态自显示);调用方 slots 追加在其后(如 footer)。
   const stateSlots = (
     <>
-      <InfiniteSelectEmpty>无匹配标签</InfiniteSelectEmpty>
-      <InfiniteSelectLoading>加载中…</InfiniteSelectLoading>
-      <InfiniteSelectLoadingMore>加载更多…</InfiniteSelectLoadingMore>
+      <InfiniteSelectEmpty>{t('tagSelect.empty')}</InfiniteSelectEmpty>
+      <InfiniteSelectLoading>{t('common.loading')}</InfiniteSelectLoading>
+      <InfiniteSelectLoadingMore>{t('tagSelect.loadingMore')}</InfiniteSelectLoadingMore>
       <InfiniteSelectError>
-        加载失败
-        <InfiniteSelectRetry>重试</InfiniteSelectRetry>
+        {t('common.loadFailed')}
+        <InfiniteSelectRetry>{t('common.retry')}</InfiniteSelectRetry>
       </InfiniteSelectError>
     </>
   )

@@ -1,5 +1,6 @@
 import { useRef, useState } from 'react'
 import { Loader2, Paperclip, SendHorizontal, X } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 
 import { uploadAttachment, useCreateComment } from '@/api/projects/projects'
@@ -32,6 +33,7 @@ export function CommentComposer({
   onPosted?: () => void
   className?: string
 }) {
+  const { t } = useTranslation()
   const create = useCreateComment(entity)
   const [draft, setDraft] = useState('')
   const [attachments, setAttachments] = useState<Draft[]>([])
@@ -43,7 +45,7 @@ export function CommentComposer({
     const room = MAX_ATTACHMENTS - attachments.length
     const chosen = [...files].slice(0, room)
     if (chosen.some((f) => f.size > MAX_ATTACHMENT_BYTES))
-      toast.error(`单个附件不能超过 ${MAX_ATTACHMENT_BYTES / 1024 / 1024} MB`)
+      toast.error(t('commentComposer.attachmentTooLarge', { size: MAX_ATTACHMENT_BYTES / 1024 / 1024 }))
     const ok = chosen.filter((f) => f.size <= MAX_ATTACHMENT_BYTES)
     if (!ok.length) return
     const seeded: Draft[] = ok.map((file, i) => ({
@@ -110,7 +112,7 @@ export function CommentComposer({
                 <span className="truncate">{a.file.name}</span>
                 <button
                   type="button"
-                  aria-label={`移除附件 ${a.file.name}`}
+                  aria-label={t('commentComposer.removeAttachment', { name: a.file.name })}
                   onClick={() => setAttachments((cur) => cur.filter((x) => x.key !== a.key))}
                   className="shrink-0 text-muted-foreground hover:text-foreground"
                 >
@@ -124,7 +126,7 @@ export function CommentComposer({
           ref={textareaRef}
           value={draft}
           disabled={!id}
-          placeholder="写下评论…"
+          placeholder={t('commentComposer.placeholder')}
           rows={1}
           maxLength={MAX_LENGTH}
           onChange={(event) => setDraft(event.target.value)}
@@ -143,8 +145,8 @@ export function CommentComposer({
             size="icon-xs"
             aria-disabled={attachments.length >= MAX_ATTACHMENTS}
             onClick={() => fileRef.current?.click()}
-            aria-label="添加附件"
-            title={`最多 ${MAX_ATTACHMENTS} 个,单个不超过 ${MAX_ATTACHMENT_BYTES / 1024 / 1024} MB`}
+            aria-label={t('commentComposer.addAttachment')}
+            title={t('commentComposer.attachmentHint', { count: MAX_ATTACHMENTS, size: MAX_ATTACHMENT_BYTES / 1024 / 1024 })}
             className="aria-disabled:pointer-events-none aria-disabled:opacity-50"
           >
             <Paperclip className="size-3.5" />
@@ -154,7 +156,7 @@ export function CommentComposer({
             variant="default"
             aria-disabled={!canSend}
             onClick={submit}
-            aria-label="发表评论"
+            aria-label={t('commentComposer.submit')}
             className="ml-auto aria-disabled:pointer-events-none aria-disabled:opacity-50"
           >
             {create.isPending ? <Loader2 className="size-3.5 animate-spin" /> : <SendHorizontal className="size-3.5" />}

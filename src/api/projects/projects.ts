@@ -8,6 +8,7 @@ import {
   type InfiniteData,
 } from '@tanstack/react-query'
 import { toast } from 'sonner'
+import { useTranslation } from 'react-i18next'
 
 import type {
   BffComment,
@@ -40,6 +41,7 @@ import {
   saveBffProjectMeta,
   saveBffProjectVisibility,
 } from '@/generated/client'
+import i18n from '@/i18n'
 import { ApiError, requestJson } from '@/lib/api-client'
 import { queryClient } from '@/lib/query-client'
 import { queryKeys, type ProjectListParams } from '@/lib/query-keys'
@@ -143,6 +145,7 @@ export function useProjectOptions(enabled: boolean) {
 // 猜不准,保持旧值、留给 onSuccess 用服务端返回的权威 { name, detail } 校正;失败回滚快照。
 // 地址字段会改标题,故列表标记过期下次 mount 再同步(不立即重拉,免得缩略图闪)。
 export function useSaveProjectMeta() {
+  const { t } = useTranslation()
   return useMutation({
     mutationFn: ({ id, meta }: { id: string; meta: BffProjectMetaRequest }) =>
       saveBffProjectMeta({ path: { id }, body: meta }),
@@ -163,7 +166,7 @@ export function useSaveProjectMeta() {
     },
     onError: (error, _vars, context) => {
       if (context?.previous) queryClient.setQueryData(context.key, context.previous)
-      toast.error(error instanceof Error && error.message ? error.message : '保存失败')
+      toast.error(error instanceof Error && error.message ? error.message : t('projects.saveFailed'))
     },
   })
 }
@@ -278,6 +281,7 @@ function appendComment(old: CommentCache | undefined, comment: BffComment): Comm
 // 乐观追加:评论是纯追加的时间线,失败只需把那条临时项摘掉 —— 比快照整页再回滚简单。
 // 服务端返回的真实 id/时间戳在 onSuccess 就地替换掉临时项,不重拉(重拉会让长线程跳一下)。
 export function useCreateComment(entity: CommentEntity) {
+  const { t } = useTranslation()
   return useMutation({
     mutationFn: ({ id, content, attachmentContentIds }: { id: string; content: string; attachmentContentIds?: string[] }) =>
       entity === 'project'
@@ -312,7 +316,7 @@ export function useCreateComment(entity: CommentEntity) {
     onError: (error, { id }, context) => {
       if (context?.previous) queryClient.setQueryData(context.key, context.previous)
       adjustCommentCount(entity, id, -1) // 回滚角标
-      toast.error(error instanceof Error && error.message ? error.message : '评论失败')
+      toast.error(error instanceof Error && error.message ? error.message : t('projects.commentFailed'))
     },
     // 计数挂在 detail(资产评论角标也在 detail.assets 里)→ 标记过期,下次展开再对账,
     // 不立刻重拉:详情带全部 asset url,重拉会让缩略图闪一遍。
@@ -349,7 +353,7 @@ export async function uploadAttachment(file: File, signal?: AbortSignal): Promis
     headers: { 'content-type': file.type || 'application/octet-stream' },
     signal,
   })
-  if (!put.ok) throw new Error(`附件上传失败 (${put.status})`)
+  if (!put.ok) throw new Error(i18n.t('projects.attachmentUploadFailed', { status: put.status }))
   await completeBffUpload({ path: { id: contentId } })
   return contentId
 }
@@ -357,6 +361,7 @@ export async function uploadAttachment(file: File, signal?: AbortSignal): Promis
 // 编辑 / 删除评论。上游按全局 comment id 寻址,但缓存是按 entity 分的 →
 // 调用方把所属 entity/entityId 一起传进来,省得为了找一条评论去遍历所有评论缓存。
 export function useEditComment(entity: CommentEntity) {
+  const { t } = useTranslation()
   return useMutation({
     mutationFn: ({ commentId, content }: { entityId: string; commentId: string; content: string }) =>
       saveBffComment({ path: { id: commentId }, body: { content } }),
@@ -378,12 +383,13 @@ export function useEditComment(entity: CommentEntity) {
     },
     onError: (error, _vars, context) => {
       if (context?.previous) queryClient.setQueryData(context.key, context.previous)
-      toast.error(error instanceof Error && error.message ? error.message : '评论修改失败')
+      toast.error(error instanceof Error && error.message ? error.message : t('projects.commentEditFailed'))
     },
   })
 }
 
 export function useDeleteComment(entity: CommentEntity) {
+  const { t } = useTranslation()
   return useMutation({
     mutationFn: ({ commentId }: { entityId: string; commentId: string }) =>
       deleteBffComment({ path: { id: commentId } }),
@@ -400,7 +406,7 @@ export function useDeleteComment(entity: CommentEntity) {
     onError: (error, { entityId }, context) => {
       if (context?.previous) queryClient.setQueryData(context.key, context.previous)
       adjustCommentCount(entity, entityId, 1) // 回滚角标
-      toast.error(error instanceof Error && error.message ? error.message : '评论删除失败')
+      toast.error(error instanceof Error && error.message ? error.message : t('projects.commentDeleteFailed'))
     },
     onSettled: (_d, _e, { entityId }) =>
       void queryClient.invalidateQueries({
@@ -412,6 +418,7 @@ export function useDeleteComment(entity: CommentEntity) {
 
 // 指派。'me' 是哨兵值 → 服务端解析成当前会话用户(前端不必先去问自己的 id)。
 export function useSaveProjectAssignee() {
+  const { t } = useTranslation()
   return useMutation({
     mutationFn: ({ id, assigneeId }: { id: string; assigneeId: string | null }) =>
       saveBffProjectAssignee({ path: { id }, body: { assigneeId } }),
@@ -424,7 +431,7 @@ export function useSaveProjectAssignee() {
       void queryClient.invalidateQueries({ queryKey: queryKeys.projects.lists(), refetchType: 'none' })
     },
     onError: (error) => {
-      toast.error(error instanceof Error && error.message ? error.message : '指派失败')
+      toast.error(error instanceof Error && error.message ? error.message : t('projects.assignFailed'))
     },
   })
 }
@@ -432,6 +439,7 @@ export function useSaveProjectAssignee() {
 // 资产房间标签。下游按名字全量覆盖 → 前端也传全量,省掉 add/remove 两套语义。
 // 乐观改 detail.assets[].tags:标签是灯箱里即时反馈的东西,等一个往返会明显发木。
 export function useSaveAssetTags() {
+  const { t } = useTranslation()
   return useMutation({
     mutationFn: ({ projectId, assetId, tags }: { projectId: string; assetId: string; tags: BffTag[] }) =>
       saveBffAssetTags({ path: { id: projectId, assetId }, body: { tagIds: tags.map((t) => t.id) } }),
@@ -468,13 +476,14 @@ export function useSaveAssetTags() {
     },
     onError: (error, _vars, context) => {
       if (context?.previous) queryClient.setQueryData(context.key, context.previous)
-      toast.error(error instanceof Error && error.message ? error.message : '标签保存失败')
+      toast.error(error instanceof Error && error.message ? error.message : t('projects.tagSaveFailed'))
     },
   })
 }
 
 // 可见性。下游只回 204,BFF 回显入参 → 直接就地改 detail 缓存。
 export function useSaveProjectVisibility() {
+  const { t } = useTranslation()
   return useMutation({
     mutationFn: ({ id, visibility }: { id: string; visibility: 'public' | 'agency' | 'owner_private' }) =>
       saveBffProjectVisibility({ path: { id }, body: { visibility } }),
@@ -489,7 +498,7 @@ export function useSaveProjectVisibility() {
     },
     onError: (error, _vars, context) => {
       if (context?.previous) queryClient.setQueryData(context.key, context.previous)
-      toast.error(error instanceof Error && error.message ? error.message : '可见性修改失败')
+      toast.error(error instanceof Error && error.message ? error.message : t('projects.visibilityUpdateFailed'))
     },
   })
 }
@@ -507,21 +516,26 @@ export function useSaveProject() {
 // 发布到平台:把已存时间线里指向本地 server 的素材上传 xchangeai + 改写引用 + 回存时间线。
 // 端点新增、生成 client 未含,直接走 requestJson 打 /bff/*(同源代理)。发布前先保存(读的是已存态)。
 export function usePublishProject() {
+  const { t } = useTranslation()
   return useMutation({
     mutationFn: ({ id }: { id: string }) =>
       requestJson<{ id: string; uploaded: number; skipped: number }>(`/bff/projects/${id}/publish`, {
         method: 'POST',
       }),
     onSuccess: (data, { id }) => {
-      toast.success(`已发布到平台:上传 ${data.uploaded} 个素材${data.skipped ? `,跳过 ${data.skipped} 个` : ''}`)
+      toast.success(
+        t('projects.published', { uploaded: data.uploaded }) +
+          (data.skipped ? t('projects.publishedSkipped', { skipped: data.skipped }) : ''),
+      )
       void queryClient.invalidateQueries({ queryKey: queryKeys.projects.detail(id) })
     },
-    onError: () => toast.error('发布失败'),
+    onError: () => toast.error(t('projects.publishFailed')),
   })
 }
 
 // 成片交付:把编辑器渲染产物(server/ 的 render URL)上传平台绑为 creator-asset。
 export function useDeliverProject() {
+  const { t } = useTranslation()
   return useMutation({
     mutationFn: ({ id, videoUrl }: { id: string; videoUrl: string }) =>
       requestJson<{ id: string; contentId: string }>(`/bff/projects/${id}/deliver`, {
@@ -529,10 +543,10 @@ export function useDeliverProject() {
         json: { videoUrl },
       }),
     onSuccess: (_data, { id }) => {
-      toast.success('成片已交付到平台')
+      toast.success(t('projects.delivered'))
       void queryClient.invalidateQueries({ queryKey: queryKeys.projects.detail(id) })
     },
-    onError: () => toast.error('交付失败'),
+    onError: () => toast.error(t('projects.deliverFailed')),
   })
 }
 
@@ -573,6 +587,7 @@ function withStatus(page: BffProjectPage, id: string, status: string): BffProjec
 //   只 refetchType:'none' 标记过期(避免图片闪烁),筛选 tab 下的成员归属下次 mount 再同步。
 // abort 按 project id 用 Map 隔离:同一项目快速连点取消上一次在途,切到别的项目不误杀其在途保存。
 export function useChangeProjectStatus() {
+  const { t } = useTranslation()
   const controllersRef = useRef(new Map<string, AbortController>())
   return useMutation({
     mutationFn: ({ id, action }: { id: string; action: string }) => {
@@ -614,7 +629,7 @@ export function useChangeProjectStatus() {
       }
       if (context?.detailKey) queryClient.setQueryData(context.detailKey, context.previousDetail)
       void queryClient.refetchQueries({ queryKey: queryKeys.projects.lists() })
-      toast.error(error instanceof Error && error.message ? error.message : '状态变更失败')
+      toast.error(error instanceof Error && error.message ? error.message : t('projects.statusChangeFailed'))
     },
     onSettled: (_data, error) => {
       if (isAbort(error)) return // 被取消的那次不做对账,交给胜出的那次

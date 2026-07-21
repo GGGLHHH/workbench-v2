@@ -1,0 +1,127 @@
+{
+  "addToEditor": {
+    "probeImageFailed": "探测图片失败",
+    "probeMediaFailed": "探测媒体失败"
+  },
+  "apiClient": {
+    "noPermission": "没有权限执行此操作",
+    "reLogin": "请重新登录",
+    "sessionExpired": "会话已过期"
+  },
+  "assetViewer": {
+    "addRoomTag": "加房间标签",
+    "confirm": "确定",
+    "noTags": "无标签",
+    "roomTag": "房间标签",
+    "searchTagPlaceholder": "搜索房间标签…"
+  },
+  "commentComposer": {
+    "addAttachment": "添加附件",
+    "attachmentHint": "最多 {{count}} 个,单个不超过 {{size}} MB",
+    "attachmentTooLarge": "单个附件不能超过 {{size}} MB",
+    "placeholder": "写下评论…",
+    "removeAttachment": "移除附件 {{name}}",
+    "submit": "发表评论"
+  },
+  "commentItem": {
+    "attachment": "附件",
+    "collapse": "收起",
+    "commentAttachments": "评论附件",
+    "confirmDeleteComment": "确认删除评论",
+    "dateMd": "M'月'd'日'",
+    "dateYmd": "yyyy'年'M'月'd'日'",
+    "deleteComment": "删除评论",
+    "editComment": "编辑评论",
+    "edited": "已编辑",
+    "expand": "展开",
+    "justNow": "刚刚",
+    "today": "今天",
+    "yesterday": "昨天"
+  },
+  "commentPane": {
+    "empty": "暂无评论，来说两句",
+    "loadFailed": "评论加载失败",
+    "loadingComments": "加载评论…",
+    "totalCount": "共 {{count}} 条评论"
+  },
+  "common": {
+    "cancel": "取消",
+    "confirm": "确认",
+    "delete": "删除",
+    "edit": "编辑",
+    "loadFailed": "加载失败",
+    "loading": "加载中…",
+    "retry": "重试",
+    "save": "保存"
+  },
+  "editorApp": {
+    "deliver": "交付",
+    "deliverRenderFirst": "请先在编辑器渲染导出成片",
+    "deliverVideoTitle": "交付成片到平台",
+    "publish": "发布",
+    "publishAssetsTitle": "发布素材到平台"
+  },
+  "lightbox": {
+    "close": "关闭",
+    "download": "下载",
+    "next": "下一个",
+    "prev": "上一个",
+    "untitledFile": "未命名文件"
+  },
+  "login": {
+    "identifier": "账号",
+    "identifierMin": "账号至少 3 个字符",
+    "identifierRequired": "请输入账号",
+    "loginFailed": "登录失败",
+    "loginSuccess": "登录成功",
+    "password": "密码",
+    "passwordMin": "密码至少 3 个字符",
+    "passwordRequired": "请输入密码",
+    "submit": "登录",
+    "submitting": "登录中…",
+    "subtitle": "使用 XChangeAI 账号登录",
+    "title": "登录 Workbench"
+  },
+  "projectNav": {
+    "addToEditor": "加入编辑器",
+    "addToEditorFailed": "加入编辑器失败",
+    "addedToEditor": "已加入编辑器：{{name}}",
+    "assetFallback": "素材",
+    "changedBy": "由 {{by}} 变更",
+    "claim": "认领",
+    "collapseSidebar": "收起侧边栏",
+    "comments": "评论",
+    "details": "详情",
+    "expandPanel": "展开{{label}}",
+    "expandSidebar": "展开侧边栏",
+    "list": "列表",
+    "noMatchingProjects": "没有匹配的项目",
+    "projects": "项目",
+    "searchAria": "搜索项目",
+    "searchPlaceholder": "搜索项目…",
+    "sync": "同步",
+    "unassign": "取消指派",
+    "viewRejection": "查看驳回意见"
+  },
+  "projects": {
+    "assignFailed": "指派失败",
+    "attachmentUploadFailed": "附件上传失败 ({{status}})",
+    "commentDeleteFailed": "评论删除失败",
+    "commentEditFailed": "评论修改失败",
+    "commentFailed": "评论失败",
+    "deliverFailed": "交付失败",
+    "delivered": "成片已交付到平台",
+    "publishFailed": "发布失败",
+    "published": "已发布到平台:上传 {{uploaded}} 个素材",
+    "publishedSkipped": ",跳过 {{skipped}} 个",
+    "saveFailed": "保存失败",
+    "statusChangeFailed": "状态变更失败",
+    "tagSaveFailed": "标签保存失败",
+    "visibilityUpdateFailed": "可见性修改失败"
+  },
+  "tagSelect": {
+    "empty": "无匹配标签",
+    "loadingMore": "加载更多…",
+    "searchPlaceholder": "搜索标签…"
+  }
+}

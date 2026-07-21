@@ -8,6 +8,7 @@ import {
   InfiniteSelectFooter,
 } from '@/components/select/infinite-select'
 import { Separator } from '@/components/ui/separator'
+import { useTranslation } from 'react-i18next'
 
 // 项目资产查看器 = 媒体灯箱 + 房间标签 + 该资产的评论(可发)。
 // 房间标签走 tag 目录的无限下拉(TagInfiniteSelect,从「已有」标签绑定,不新建);评论走右栏的
@@ -77,6 +78,7 @@ function AssetTagField({
   onChange: (tags: BffTag[]) => void
   disabled?: boolean
 }) {
+  const { t } = useTranslation()
   if (disabled) {
     return (
       <div className="flex min-w-0 flex-wrap items-center gap-1">
@@ -87,7 +89,7 @@ function AssetTagField({
             </span>
           ))
         ) : (
-          <span className="text-[11px] text-muted-foreground">无标签</span>
+          <span className="text-[11px] text-muted-foreground">{t('assetViewer.noTags')}</span>
         )}
       </div>
     )
@@ -101,14 +103,14 @@ function AssetTagField({
       value={tags.map((t) => t.id)}
       selectedItems={tags}
       onChange={onChange}
-      searchPlaceholder="搜索房间标签…"
+      searchPlaceholder={t('assetViewer.searchTagPlaceholder')}
       contentClassName="min-w-56"
       // 底部操作栏:组合式插槽。取消=丢弃勾选还原,确定=提交并关闭。各半 + 中间竖线由部件自带 flex-1。
       slots={
         <InfiniteSelectFooter>
-          <InfiniteSelectCancelButton>取消</InfiniteSelectCancelButton>
+          <InfiniteSelectCancelButton>{t('common.cancel')}</InfiniteSelectCancelButton>
           <Separator orientation="vertical" />
-          <InfiniteSelectConfirmButton>确定</InfiniteSelectConfirmButton>
+          <InfiniteSelectConfirmButton>{t('assetViewer.confirm')}</InfiniteSelectConfirmButton>
         </InfiniteSelectFooter>
       }
     >
@@ -117,7 +119,7 @@ function AssetTagField({
         return (
           <button
             type="button"
-            aria-label="房间标签"
+            aria-label={t('assetViewer.roomTag')}
             className="flex min-h-6 min-w-0 flex-1 flex-wrap items-center gap-1 rounded border bg-transparent px-1.5 py-1 text-left outline-none hover:border-ring focus-visible:border-ring"
           >
             {chips.length ? (
@@ -127,7 +129,7 @@ function AssetTagField({
                 </span>
               ))
             ) : (
-              <span className="text-[11px] text-muted-foreground">加房间标签</span>
+              <span className="text-[11px] text-muted-foreground">{t('assetViewer.addRoomTag')}</span>
             )}
           </button>
         )

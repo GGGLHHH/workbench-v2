@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef } from 'react'
+import { useTranslation } from 'react-i18next'
 import { useQueryClient } from '@tanstack/react-query'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import { Loader2 } from 'lucide-react'
@@ -34,6 +35,7 @@ export function CommentPane({
   enabled?: boolean
   className?: string
 }) {
+  const { t } = useTranslation()
   const query = useInfiniteComments(entity, id, total, enabled)
   const meId = useQueryClient().getQueryData<BffSession>(queryKeys.session())?.user?.id
 
@@ -101,12 +103,12 @@ export function CommentPane({
         <div className="flex min-h-full flex-col justify-end pr-1">
           {query.isPending ? (
             <div className="flex items-center gap-2 py-2 text-xs text-muted-foreground">
-              <Loader2 className="size-3.5 animate-spin" /> 加载评论…
+              <Loader2 className="size-3.5 animate-spin" /> {t('commentPane.loadingComments')}
             </div>
           ) : query.isError ? (
-            <p className="py-2 text-xs text-destructive">评论加载失败</p>
+            <p className="py-2 text-xs text-destructive">{t('commentPane.loadFailed')}</p>
           ) : items.length === 0 ? (
-            <p className="py-2 text-xs text-muted-foreground">暂无评论，来说两句</p>
+            <p className="py-2 text-xs text-muted-foreground">{t('commentPane.empty')}</p>
           ) : (
             <div style={{ position: 'relative', width: '100%', height: virtualizer.getTotalSize() }}>
               {virtualItems.map((vi) => {
@@ -140,7 +142,7 @@ export function CommentPane({
         </div>
       </ScrollArea>
       <CommentComposer entity={entity} id={id} onPosted={() => requestAnimationFrame(scrollToBottom)} className="mt-2" />
-      {shownTotal > 0 ? <p className="pt-1 text-[11px] text-muted-foreground">共 {shownTotal} 条评论</p> : null}
+      {shownTotal > 0 ? <p className="pt-1 text-[11px] text-muted-foreground">{t('commentPane.totalCount', { count: shownTotal })}</p> : null}
     </div>
   )
 }

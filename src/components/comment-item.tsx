@@ -1,7 +1,9 @@
 import { useLayoutEffect, useRef, useState } from 'react'
 import { differenceInSeconds, format, isThisYear, isToday, isYesterday } from 'date-fns'
 import { Check, File as FileIcon, Pencil, Trash2 } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 
+import i18n from '@/i18n'
 import type { BffComment } from '@/generated/api-types'
 import { useDeleteComment, useEditComment } from '@/api/projects/projects'
 import { Bubble, BubbleContent } from '@/components/ui/bubble'
@@ -21,9 +23,9 @@ const MAX_LENGTH = 5000
 
 // 居中日期分隔条文案(对齐 Telegram):今天/昨天/7月18日/2025年7月18日。CJK 字面量需单引号转义。
 export function dayLabel(d: Date): string {
-  if (isToday(d)) return '今天'
-  if (isYesterday(d)) return '昨天'
-  return isThisYear(d) ? format(d, "M'月'd'日'") : format(d, "yyyy'年'M'月'd'日'")
+  if (isToday(d)) return i18n.t('commentItem.today')
+  if (isYesterday(d)) return i18n.t('commentItem.yesterday')
+  return isThisYear(d) ? format(d, i18n.t('commentItem.dateMd')) : format(d, i18n.t('commentItem.dateYmd'))
 }
 
 // 评论流拆成「日期分隔 + 评论」的混合行:本地日切换处插一条分隔。list 与 chat 共用一套,
@@ -71,6 +73,7 @@ export function CommentItem({
   // list = 项目面板的紧凑列表;chat = 灯箱的 Telegram 气泡(自己右、别人左)
   variant?: 'list' | 'chat'
 }) {
+  const { t } = useTranslation()
   const edit = useEditComment(entity)
   const remove = useDeleteComment(entity)
   const [expanded, setExpanded] = useState(false)
@@ -101,9 +104,9 @@ export function CommentItem({
   // 气泡内只留时钟(日期靠日期分隔条,list/chat 都有);近处给「刚刚」。hover 看到秒。
   const shortClock =
     differenceInSeconds(new Date(), new Date(comment.createdAt)) < 60
-      ? '刚刚'
+      ? t('commentItem.justNow')
       : format(new Date(comment.createdAt), 'HH:mm')
-  const timeText = `${shortClock}${comment.editedAt ? ' · 已编辑' : ''}`
+  const timeText = `${shortClock}${comment.editedAt ? ` · ${t('commentItem.edited')}` : ''}`
   const fullTime = format(new Date(comment.createdAt), 'yyyy-MM-dd HH:mm:ss')
 
   // 编辑/删除:hover 才显现(两种变体都是),且只在自己的评论上渲染
@@ -113,7 +116,7 @@ export function CommentItem({
         <button
           type="button"
           onClick={() => setEditing(comment.content)}
-          aria-label="编辑评论"
+          aria-label={t('commentItem.editComment')}
           className="text-muted-foreground hover:text-foreground"
         >
           <Pencil className="size-3" />
@@ -124,7 +127,7 @@ export function CommentItem({
             confirmDelete ? id && remove.mutate({ entityId: id, commentId: comment.id }) : setConfirmDelete(true)
           }
           onBlur={() => setConfirmDelete(false)}
-          aria-label={confirmDelete ? '确认删除评论' : '删除评论'}
+          aria-label={confirmDelete ? t('commentItem.confirmDeleteComment') : t('commentItem.deleteComment')}
           className={cn('hover:text-destructive', confirmDelete ? 'text-destructive' : 'text-muted-foreground')}
         >
           {confirmDelete ? <Check className="size-3" /> : <Trash2 className="size-3" />}
@@ -151,10 +154,10 @@ export function CommentItem({
       />
       <div className="flex gap-2 text-[11px]">
         <button type="button" className="text-primary hover:underline" onClick={submitEdit}>
-          保存
+          {t('common.save')}
         </button>
         <button type="button" className="text-muted-foreground hover:underline" onClick={() => setEditing(null)}>
-          取消
+          {t('common.cancel')}
         </button>
       </div>
     </div>
@@ -176,7 +179,7 @@ export function CommentItem({
           onClick={() => setExpanded((v) => !v)}
           className="self-start text-[11px] text-primary hover:underline"
         >
-          {expanded ? '收起' : '展开'}
+          {expanded ? t('commentItem.collapse') : t('commentItem.expand')}
         </button>
       ) : null}
       {/* 媒体走网格、其余走文件行 —— 一个 pdf 塞进 <img> 只会得到碎图。点媒体开灯箱轮播,只装这条的媒体。 */}
@@ -204,7 +207,7 @@ export function CommentItem({
             closing={viewer.closing}
             onIndexChange={viewer.onIndexChange}
             onClose={viewer.close}
-            subtitle="评论附件"
+            subtitle={t('commentItem.commentAttachments')}
           />
         </div>
       ) : null}
@@ -219,7 +222,7 @@ export function CommentItem({
               className="inline-flex items-center gap-1 truncate rounded border px-1.5 py-1 text-[11px] hover:border-ring"
             >
               <FileIcon className="size-3 shrink-0" />
-              <span className="truncate">{a.name || '附件'}</span>
+              <span className="truncate">{a.name || t('commentItem.attachment')}</span>
               {a.sizeBytes ? (
                 <span className="ml-auto shrink-0 text-muted-foreground">{fileSize(a.sizeBytes)}</span>
               ) : null}
