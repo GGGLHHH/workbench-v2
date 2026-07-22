@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { useSearch } from '@tanstack/react-router'
 import useEmblaCarousel from 'embla-carousel-react'
 import { useTranslation } from 'react-i18next'
 import {
@@ -14,8 +15,8 @@ import {
   Share2,
 } from 'lucide-react'
 
-import type { BffProject } from '@/generated/api-types'
 import type { MetaDraft } from '@/components/project-nav/detail/meta-draft'
+import { useNavActions, useStatusChangingId } from '@/components/project-nav/nav-context'
 import { PanelBody } from '@/components/project-nav/shell'
 import { Field, Group, Metric } from '@/components/project-nav/fields'
 import { ProjectStatusMenu } from '@/components/project-nav/status-menu'
@@ -26,6 +27,7 @@ import { MetaForm } from '@/components/project-nav/detail/meta-form'
 import { AssetGrid } from '@/components/project-nav/detail/asset-grid'
 
 import {
+  useProject,
   useProjectOptions,
   useSaveProjectAssignee,
   useSaveProjectMeta,
@@ -46,22 +48,18 @@ import { VideoOverlaysSection } from '@/components/project-nav/overlays/video-ov
 
 // 详情面板:对齐 xchangeai-workbench 的 "Project details" 表单(ProjectMetaPanel)+ TopBar 摘要。
 // 那边是弹窗,这里就地切换 view/edit —— 同样的元素,少一层模态。
-export function DetailContent({
-  loading,
-  project,
-  visible,
-  onBack,
-  onChangeStatus,
-  statusBusy,
-}: {
-  loading: boolean
-  project: BffProject | undefined
-  visible: boolean
-  onBack: () => void
-  onChangeStatus: (id: string, action: string) => void
-  statusBusy: boolean
-}) {
+export function DetailContent({ visible }: { visible: boolean }) {
   const { t } = useTranslation()
+  // 易变态就地读:selectedId 走 URL,project/loading 直接订阅 useProject —— 不再从 ProjectNav 穿参。
+  const selectedId = useSearch({ from: '/' }).project ?? null
+  const detail = useProject(selectedId)
+  const loading = detail.isPending && Boolean(selectedId)
+  const project = detail.data
+  const { backToList, changeProjectStatus } = useNavActions()
+  // statusBusy 等价于旧 `changeStatus.isPending && changeStatus.variables?.id === selectedId`:
+  // useStatusChangingId() 非 pending 时为 null,故 selectedId 为 null 时用守卫保持旧的 false。
+  const changingId = useStatusChangingId()
+  const statusBusy = selectedId != null && changingId === selectedId
   const [editing, setEditing] = useState(false)
   // 草稿提在这层(见 MetaDraft):乐观保存立刻关表单,失败原样重开都不丢用户输入。
   const [draft, setDraft] = useState<MetaDraft | null>(null)
@@ -177,7 +175,7 @@ export function DetailContent({
             </Button>
           </>
         ) : null}
-        <Button variant="ghost" size="sm" className="h-7 gap-1 px-2 text-xs" onClick={onBack}>
+        <Button variant="ghost" size="sm" className="h-7 gap-1 px-2 text-xs" onClick={backToList}>
           <ChevronLeft className="size-3.5" /> {t('projectNav.list')}
         </Button>
       </div>
@@ -255,7 +253,7 @@ export function DetailContent({
                           <ProjectStatusMenu
                             status={d.status}
                             busy={statusBusy}
-                            onAction={(action) => onChangeStatus(project.id, action)}
+                            onAction={(action) => changeProjectStatus(project.id, action)}
                           />
                           {d.statusUpdatedBy ? (
                             <span className="text-[11px] text-muted-foreground">{t('projectNav.changedBy', { by: d.statusUpdatedBy })}</span>

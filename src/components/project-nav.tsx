@@ -15,7 +15,6 @@ import { NavActionsProvider, StatusChangingProvider } from '@/components/project
 
 import {
   useChangeProjectStatus,
-  useProject,
   useProjectStats,
 } from '@/api/projects/projects'
 
@@ -57,7 +56,6 @@ export function ProjectNav() {
   const stats = useProjectStats()
   const statsRefetch = stats.refetch
   const refreshStats = useCallback(() => void statsRefetch(), [statsRefetch])
-  const detail = useProject(selectedId)
 
   // 点 rail / 选项目 → 展开该栏(顺带解除整体收起)
   // useCallback:要进 actions memo,身份必须稳,否则 memo 每次重建、Task 12/13 的消费者白订阅
@@ -155,16 +153,7 @@ export function ProjectNav() {
             onExpand={() => selectedId && openPanel('detail')}
           />
         }
-        panel={
-          <DetailContent
-            loading={detail.isPending && Boolean(selectedId)}
-            project={detail.data}
-            visible={detailExpanded}
-            onBack={() => setActive('list')}
-            onChangeStatus={(id, action) => changeStatus.mutate({ id, action })}
-            statusBusy={changeStatus.isPending && changeStatus.variables?.id === selectedId}
-          />
-        }
+        panel={<DetailContent visible={detailExpanded} />}
       />
     </div>
       </StatusChangingProvider>
