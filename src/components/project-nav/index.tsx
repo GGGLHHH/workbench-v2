@@ -58,7 +58,8 @@ export function ProjectNav() {
   const refreshStats = useCallback(() => void statsRefetch(), [statsRefetch])
 
   // 点 rail / 选项目 → 展开该栏(顺带解除整体收起)
-  // useCallback:要进 actions memo,身份必须稳,否则 memo 每次重建、Task 12/13 的消费者白订阅
+  // useCallback:身份要稳 —— Rail 的 onExpand 闭包每次渲染都新建,若 openPanel 本身不稳,
+  // 传给 memo 化子组件(见下方 Section/Rail)的闭包也白搭
   const openPanel = useCallback(
     (panel: Panel) => {
       setActive(panel)
@@ -66,7 +67,6 @@ export function ProjectNav() {
     },
     [setActive, setCollapsed],
   )
-  const collapse = useCallback(() => setCollapsed(true), [setCollapsed])
   const toggleCollapse = useCallback(() => setCollapsed((v) => !v), [setCollapsed])
   const backToList = useCallback(() => setActive('list'), [setActive])
 
@@ -90,7 +90,7 @@ export function ProjectNav() {
     [changeStatusMutate],
   )
 
-  // 稳定回调聚成一个 identity 恒定的 value(deps 覆盖全 10 个字段);消费在 Task 12/13。
+  // 稳定回调聚成一个 identity 恒定的 value(deps 覆盖全 8 个字段);消费在 Task 12/13。
   const actions = useMemo<NavActions>(
     () => ({
       selectProject,
@@ -99,8 +99,6 @@ export function ProjectNav() {
       onAssigneeChange,
       onSortChange,
       refreshStats,
-      openPanel,
-      collapse,
       toggleCollapse,
       backToList,
     }),
@@ -111,8 +109,6 @@ export function ProjectNav() {
       onAssigneeChange,
       onSortChange,
       refreshStats,
-      openPanel,
-      collapse,
       toggleCollapse,
       backToList,
     ],

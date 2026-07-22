@@ -204,9 +204,12 @@ describe('封面 = 真正的首/尾块,时间不重叠', () => {
 })
 
 describe('sameOverlay', () => {
-  it('banner.opacity 不同 → false', () => {
+  it('结构相同的不同对象 → true;banner.opacity 不同 → false', () => {
     const base = readOverlayConfig(seed())
-    expect(sameOverlay(base, base)).toBe(true)
+    // 两个独立构建、结构相同但引用不同的对象 —— 防止 (a,b)=>a===b 这种引用比较也能骗过测试
+    const again = readOverlayConfig(seed())
+    expect(base).not.toBe(again)
+    expect(sameOverlay(base, again)).toBe(true)
     expect(sameOverlay(base, { ...base, banner: { ...base.banner, opacity: base.banner.opacity + 0.1 } })).toBe(false)
   })
 })

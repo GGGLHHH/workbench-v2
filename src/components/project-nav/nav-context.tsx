@@ -1,5 +1,4 @@
 import { createContext, useContext } from 'react'
-import type { Panel } from '@/components/project-nav/types'
 
 // 稳定回调集中到一个 context —— value 由 ProjectNav 用 useMemo 包一次,identity 恒定,
 // 读它的组件永不因它重渲染。易变值(search/selectedId/counts)不进这里,叶子就地读 hook。
@@ -10,8 +9,6 @@ export type NavActions = {
   onAssigneeChange: (v: string) => void
   onSortChange: (v: string) => void
   refreshStats: () => void
-  openPanel: (panel: Panel) => void
-  collapse: () => void
   toggleCollapse: () => void
   backToList: () => void
 }
