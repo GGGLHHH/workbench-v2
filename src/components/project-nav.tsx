@@ -5,7 +5,6 @@ import useEmblaCarousel from 'embla-carousel-react'
 import { useLocalStorageState } from 'ahooks'
 import { useTranslation } from 'react-i18next'
 import {
-  Building2,
   ChevronLeft,
   Clapperboard,
   Clock,
@@ -18,7 +17,6 @@ import {
   MessageSquare,
   Pencil,
   Share2,
-  User,
 } from 'lucide-react'
 
 import type { BffProject } from '@/generated/api-types'
@@ -30,6 +28,7 @@ import { ASSIGNEE_FILTERS, ROW_GAP, ROW_HEIGHT, SORT_OPTIONS } from '@/component
 import { CollapseToggle, Layer, PanelBody, Rail, Section } from '@/components/project-nav/shell'
 import { Field, Group, Metric, Row } from '@/components/project-nav/fields'
 import { ProjectStatusMenu } from '@/components/project-nav/status-menu'
+import { ProjectCard } from '@/components/project-nav/list/project-card'
 import { VisibilityMenu } from '@/components/project-nav/detail/visibility-menu'
 import { AnalyticsPanel, PUBLISHED_STATUSES } from '@/components/project-nav/detail/analytics-panel'
 import { detailToDraft, draftToMeta } from '@/components/project-nav/detail/meta-draft'
@@ -58,7 +57,7 @@ import { cn } from '@/lib/utils'
 import { useScrollFade } from '@/lib/use-scroll-fade'
 import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
-import { MediaCard, Thumb, duration } from '@/components/media-card'
+import { Thumb, duration } from '@/components/media-card'
 import { Separator } from '@/components/ui/separator'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
@@ -549,61 +548,6 @@ function ListContent({
     </PanelBody>
   )
 }
-
-// 缩略图(列表卡片 + 详情共用)。视频资产无图片海报 → 用 <video> 首帧(#t=0.1 避开黑帧)。
-
-// memo:滚动时虚拟化器每帧都产出新数组,不 memo 的话这 20 张卡片(连同里面的
-// <video preload="metadata">)每帧全部重新协调 —— 这是滚动卡顿的最后一块。
-// 回调收 id 而不是闭包,否则每行每帧都是新函数,memo 直接失效。
-const ProjectCard = memo(function ProjectCard({
-  project,
-  active,
-  busy,
-  onOpen,
-  onChangeStatus,
-}: {
-  project: ProjectSummary
-  active: boolean
-  busy: boolean
-  onOpen: (id: string) => void
-  onChangeStatus: (id: string, action: string) => void
-}) {
-  return (
-    <MediaCard
-      active={active}
-      onOpen={() => onOpen(project.id)}
-      title={project.title}
-      titleAttr={project.title}
-      thumbnail={<Thumb url={project.thumbnailUrl} kind={project.thumbnailKind} className="size-14" />}
-      footer={
-        <>
-          <ProjectStatusMenu status={project.status} busy={busy} onAction={(action) => onChangeStatus(project.id, action)} />
-          <span className="text-xs text-muted-foreground">{relTime(project.updatedAt)}</span>
-        </>
-      }
-    >
-      <span className="flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-muted-foreground">
-        <span className="inline-flex min-w-0 items-center gap-1">
-          <User className="size-3 shrink-0" /> <span className="truncate">{project.assignee || 'Unassigned'}</span>
-        </span>
-        <span className="inline-flex min-w-0 items-center gap-1">
-          <Building2 className="size-3 shrink-0" /> <span className="truncate">{project.agency || 'No agency'}</span>
-        </span>
-      </span>
-      <span className="flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-muted-foreground">
-        <span className="inline-flex items-center gap-1">
-          <ImageIcon className="size-3" /> {project.resourceCount} resources
-        </span>
-        <span className="inline-flex items-center gap-1">
-          <Clapperboard className="size-3" /> {project.clipCount} clips
-        </span>
-        <span className="inline-flex items-center gap-1">
-          <Clock className="size-3" /> {duration(project.durationSeconds)}
-        </span>
-      </span>
-    </MediaCard>
-  )
-})
 
 // 详情面板:对齐 xchangeai-workbench 的 "Project details" 表单(ProjectMetaPanel)+ TopBar 摘要。
 // 那边是弹窗,这里就地切换 view/edit —— 同样的元素,少一层模态。
