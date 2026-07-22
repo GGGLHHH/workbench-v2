@@ -7,13 +7,11 @@ import { useTranslation } from 'react-i18next'
 import {
   Building2,
   Check,
-  ChevronDown,
   ChevronLeft,
   Clapperboard,
   Clock,
   CloudDownload,
   ExternalLink,
-  Eye,
   FolderClosed,
   Image as ImageIcon,
   Info,
@@ -32,16 +30,12 @@ import type { BffProject, BffProjectDetail, BffProjectMetaRequest, BffProjectOpt
 // 类型引用,verbatimModuleSyntax 下会被完全擦除 → 与路由不构成运行时循环依赖
 import type { ProjectSearch } from '@/routes/index'
 import type { Anchor, Panel, ProjectSummary } from '@/components/project-nav/types'
-import {
-  ASSIGNEE_FILTERS,
-  ROW_GAP,
-  ROW_HEIGHT,
-  SORT_OPTIONS,
-  STATUS_ACTIONS,
-  STATUS_STYLE,
-} from '@/components/project-nav/constants'
+import { ASSIGNEE_FILTERS, ROW_GAP, ROW_HEIGHT, SORT_OPTIONS } from '@/components/project-nav/constants'
 import { CollapseToggle, Layer, PanelBody, Rail, Section } from '@/components/project-nav/shell'
 import { Field, Group, Metric, Row } from '@/components/project-nav/fields'
+import { ProjectStatusMenu } from '@/components/project-nav/status-menu'
+import { VisibilityMenu } from '@/components/project-nav/detail/visibility-menu'
+import { AnalyticsPanel, PUBLISHED_STATUSES } from '@/components/project-nav/detail/analytics-panel'
 
 import {
   PROJECTS_PAGE_SIZE,
@@ -49,7 +43,6 @@ import {
   useChangeProjectStatus,
   useDeleteProjectAsset,
   useProject,
-  useProjectAnalytics,
   useProjectOptions,
   useProjectPages,
   useProjectStats,
@@ -60,7 +53,7 @@ import {
 } from '@/api/projects/projects'
 import { useSession } from '@/api/session/session'
 import { toast } from 'sonner'
-import { absTime, relTime, statusLabel, usd } from '@/lib/format'
+import { absTime, relTime, usd } from '@/lib/format'
 import { addProjectAssetToEditor } from '@/lib/add-to-editor'
 import { AssetViewer } from '@/components/asset-viewer'
 import { LanguageToggle } from '@/components/language-toggle'
@@ -76,12 +69,6 @@ import { MediaCard, Thumb, duration } from '@/components/media-card'
 import { Separator } from '@/components/ui/separator'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu'
 import { SearchInput } from '@/components/form/search-input'
 import { Input } from '@/components/ui/input'
 import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select'
@@ -569,147 +556,6 @@ function ListContent({
         )}
       </ScrollArea>
     </PanelBody>
-  )
-}
-
-// 状态徽章 = 下拉:点击弹出当前状态可执行的 FSM 动作(对齐 xchangeai-workbench 的 ProjectStatusMenu)。
-function ProjectStatusMenu({
-  status,
-  busy,
-  onAction,
-}: {
-  status: string
-  busy: boolean
-  onAction: (action: string) => void
-}) {
-  const actions = STATUS_ACTIONS[status] ?? []
-  // 待确认的动作。菜单关闭即清空 —— 下次打开必须从头再点一次,不留半截状态。
-  const [pendingConfirm, setPendingConfirm] = useState<string | null>(null)
-  const pill = cn(
-    'inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-xs font-medium capitalize',
-    STATUS_STYLE[status] ?? 'bg-muted text-muted-foreground',
-  )
-  if (actions.length === 0) return <span className={pill}>{statusLabel(status)}</span>
-  return (
-    <DropdownMenu onOpenChange={(open) => !open && setPendingConfirm(null)}>
-      <DropdownMenuTrigger disabled={busy} className={cn(pill, 'cursor-pointer outline-none disabled:opacity-60')}>
-        {busy ? <Loader2 className="size-3 animate-spin" /> : null}
-        {statusLabel(status)}
-        <ChevronDown className="size-3 opacity-70" />
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="start" className="min-w-44">
-        {actions.map((a) => {
-          const confirming = pendingConfirm === a.action
-          return (
-            <DropdownMenuItem
-              key={a.action}
-              // 第一次点危险动作只换文案,菜单要留着 → 阻止 Base UI 的默认关闭
-              closeOnClick={!a.confirm || confirming}
-              className={cn(
-                'text-xs',
-                a.confirm && 'text-destructive focus:text-destructive',
-                confirming && 'font-medium',
-                a.primary && 'font-medium text-foreground',
-              )}
-              onClick={() => {
-                if (a.confirm && !confirming) {
-                  setPendingConfirm(a.action)
-                  return
-                }
-                setPendingConfirm(null)
-                onAction(a.action)
-              }}
-            >
-              {confirming ? a.confirm : a.label}
-            </DropdownMenuItem>
-          )
-        })}
-      </DropdownMenuContent>
-    </DropdownMenu>
-  )
-}
-
-// 观看数据只在项目公开出去之后才产生 —— 其余状态连请求都不该发。
-const PUBLISHED_STATUSES = new Set(['published'])
-
-// 项目分析:浏览 / 独立访客 / 分享,各带环比。上游是 frontend 域的端点,workbench 用户不一定
-// 有权限 → 失败静默不展示(retry:false),而不是在详情里挂一条红色错误。
-function AnalyticsPanel({ projectId, enabled }: { projectId: string; enabled: boolean }) {
-  const { t } = useTranslation()
-  const { data, isPending, isError } = useProjectAnalytics(projectId, enabled)
-  if (isError) return null
-  return (
-    <Group title="Audience">
-      {isPending ? (
-        <div className="flex items-center gap-2 py-1 text-xs text-muted-foreground">
-          <Loader2 className="size-3.5 animate-spin" /> {t('common.loading')}
-        </div>
-      ) : (
-        <div className="grid grid-cols-3 gap-2">
-          <Metric label="Views" value={<Trend m={data.views} />} />
-          <Metric label="Visitors" value={<Trend m={data.uniqueVisitors} />} />
-          <Metric label="Shares" value={<Trend m={data.shares} />} />
-        </div>
-      )}
-    </Group>
-  )
-}
-
-// 值 + 环比。changePercent 为 null(上期为 0,涨幅无从谈起)时只显示值,不写 "+∞%"。
-function Trend({ m }: { m: { value: number; changePercent?: number | null } }) {
-  const c = m.changePercent
-  return (
-    <span className="inline-flex items-baseline gap-1">
-      {m.value.toLocaleString()}
-      {c != null && c !== 0 ? (
-        <span className={cn('text-[10px]', c > 0 ? 'text-emerald-500' : 'text-red-500')}>
-          {c > 0 ? '+' : ''}
-          {Math.round(c)}%
-        </span>
-      ) : null}
-    </span>
-  )
-}
-
-// 可见性:与状态徽章同一套「药丸即菜单」的形态,免得详情面板里两种可改字段长得不一样。
-// 三档取自上游 ProjectVisibility 枚举。
-const VISIBILITY_OPTIONS = [
-  { value: 'public', label: 'Public' },
-  { value: 'agency', label: 'Agency' },
-  { value: 'owner_private', label: 'Owner private' },
-] as const
-
-function VisibilityMenu({
-  visibility,
-  busy,
-  onChange,
-}: {
-  visibility: string | null
-  busy: boolean
-  onChange: (v: 'public' | 'agency' | 'owner_private') => void
-}) {
-  return (
-    <DropdownMenu>
-      <DropdownMenuTrigger
-        disabled={busy}
-        className="inline-flex cursor-pointer items-center gap-1 rounded outline-none hover:text-foreground disabled:opacity-60"
-      >
-        {busy ? <Loader2 className="size-3 animate-spin" /> : <Eye className="size-3" />}
-        {statusLabel(visibility || 'unknown')}
-        <ChevronDown className="size-3 opacity-70" />
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="start" className="min-w-36">
-        {VISIBILITY_OPTIONS.map((o) => (
-          <DropdownMenuItem
-            key={o.value}
-            className={cn('text-xs', o.value === visibility && 'font-medium text-foreground')}
-            onClick={() => o.value !== visibility && onChange(o.value)}
-          >
-            {o.label}
-          </DropdownMenuItem>
-        ))}
-      </DropdownMenuContent>
-    </DropdownMenu>
   )
 }
 
