@@ -19,8 +19,6 @@ import {
   Info,
   Loader2,
   MessageSquare,
-  PanelLeftClose,
-  PanelLeftOpen,
   Pencil,
   Plus,
   Share2,
@@ -42,6 +40,8 @@ import {
   STATUS_ACTIONS,
   STATUS_STYLE,
 } from '@/components/project-nav/constants'
+import { CollapseToggle, Layer, PanelBody, Rail, Section } from '@/components/project-nav/shell'
+import { Field, Group, Metric, Row } from '@/components/project-nav/fields'
 
 import {
   PROJECTS_PAGE_SIZE,
@@ -84,7 +84,6 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { SearchInput } from '@/components/form/search-input'
 import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
 import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select'
 import { Switch } from '@/components/ui/switch'
 import { Slider } from '@/components/ui/slider'
@@ -252,126 +251,6 @@ export function ProjectNav() {
       />
     </div>
   )
-}
-
-// 对齐 shadcn 官方 sidebar 的动画结构。要点(以前的写法三条全踩反了):
-//  1. 不做条件渲染 —— 面板与 rail 始终挂载,靠 CSS 交叉淡入。以前是 `expanded ? panel : rail`,
-//     点击瞬间内容就换掉了,而宽度还要慢慢动 300ms,于是「内容已变、容器还在爬」= 跳变。
-//  2. 两层各自保持固有宽度并绝对定位 —— 收缩时内容被 overflow 裁掉,而不是被挤扁回流
-//     (文字换行/元素重排在动画中途最显脏)。
-//  3. duration-200 ease-linear —— 官方用线性;宽度动画配 ease-in-out 会显得黏。
-function Section({
-  expanded,
-  bordered,
-  panel,
-  rail,
-}: {
-  expanded: boolean
-  bordered?: boolean
-  panel: React.ReactNode
-  rail: React.ReactNode
-}) {
-  return (
-    <section
-      data-state={expanded ? 'expanded' : 'collapsed'}
-      className={cn(
-        'relative shrink-0 overflow-hidden transition-[width] duration-200 ease-linear',
-        bordered && 'border-r',
-        expanded ? 'w-(--panel-w)' : 'w-(--panel-w-icon)',
-      )}
-    >
-      <Layer show={expanded} className="w-(--panel-w)">
-        {panel}
-      </Layer>
-      <Layer show={!expanded} className="w-(--panel-w-icon)">
-        {rail}
-      </Layer>
-    </section>
-  )
-}
-
-// 隐藏层用 inert 彻底移出交互与无障碍树(React 19 支持布尔 inert),
-// 否则「看不见但能 Tab 到」——这是叠层方案最容易漏的坑。
-function Layer({
-  show,
-  className,
-  children,
-}: {
-  show: boolean
-  className?: string
-  children: React.ReactNode
-}) {
-  return (
-    <div
-      inert={!show}
-      aria-hidden={!show}
-      className={cn(
-        'absolute inset-y-0 left-0 flex flex-col transition-opacity duration-200 ease-linear',
-        show ? 'opacity-100' : 'pointer-events-none opacity-0',
-        className,
-      )}
-    >
-      {children}
-    </div>
-  )
-}
-
-// 收起/展开整个侧边栏的开关。收起态由它还原到 active 那一栏。
-function CollapseToggle({ collapsed, onToggle }: { collapsed: boolean; onToggle: () => void }) {
-  const { t } = useTranslation()
-  const label = collapsed ? t('projectNav.expandSidebar') : t('projectNav.collapseSidebar')
-  return (
-    <Button
-      variant="ghost"
-      size="icon"
-      className="size-7"
-      onClick={onToggle}
-      title={label}
-      aria-label={label}
-      aria-expanded={!collapsed}
-    >
-      {collapsed ? <PanelLeftOpen className="size-4" /> : <PanelLeftClose className="size-4" />}
-    </Button>
-  )
-}
-
-// topAction 固定在 rail 顶部(高度对齐详情面板的 h-11 头部),其下才是「点开本栏」的区域
-function Rail({
-  icon,
-  label,
-  onExpand,
-  disabled,
-  topAction,
-}: {
-  icon: React.ReactNode
-  label: string
-  onExpand: () => void
-  disabled?: boolean
-  topAction?: React.ReactNode
-}) {
-  const { t } = useTranslation()
-  return (
-    <div className="flex h-full w-full flex-col items-center">
-      {topAction ? <div className="flex h-11 shrink-0 items-center">{topAction}</div> : null}
-      <button
-        type="button"
-        disabled={disabled}
-        onClick={onExpand}
-        className="flex w-full min-h-0 flex-1 flex-col items-center gap-3 py-3 transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground disabled:pointer-events-none disabled:opacity-40"
-        aria-label={t('projectNav.expandPanel', { label })}
-      >
-        {icon}
-        <span className="text-xs tracking-wider text-muted-foreground [writing-mode:vertical-rl]">
-          {label}
-        </span>
-      </button>
-    </div>
-  )
-}
-
-// 宽度由外层 Layer 给(w-(--panel-w)),这里铺满即可 —— 内容不随容器收缩回流。
-function PanelBody({ children }: { children: React.ReactNode }) {
-  return <div className="flex h-full w-full flex-col">{children}</div>
 }
 
 // 头部单独 memo:滚动时虚拟化器每帧都让 ListContent 重渲染,而搜索框、11 个状态 tab、
@@ -900,36 +779,6 @@ const ProjectCard = memo(function ProjectCard({
   )
 })
 
-// 分组标题 + 一列 label/value 行。value 为空显示 "—"(只读面板留占位比隐藏行更稳定,
-// 不会因为数据缺失而让面板高度乱跳)。
-function Group({ title, children }: { title: string; children: React.ReactNode }) {
-  return (
-    <section className="flex flex-col gap-1.5">
-      <h3 className="text-xs font-medium tracking-wide text-muted-foreground uppercase">{title}</h3>
-      <dl className="flex flex-col gap-1">{children}</dl>
-    </section>
-  )
-}
-
-function Field({ label, value }: { label: string; value: React.ReactNode }) {
-  return (
-    <div className="flex items-baseline justify-between gap-3 text-xs">
-      <dt className="shrink-0 text-muted-foreground">{label}</dt>
-      <dd className="min-w-0 truncate text-right">{value || <span className="text-muted-foreground">—</span>}</dd>
-    </div>
-  )
-}
-
-// beds/baths/sqft 三格,对齐 workbench 的 .nle-three-fields
-function Metric({ label, value }: { label: string; value: React.ReactNode }) {
-  return (
-    <div className="flex flex-col items-center gap-0.5 rounded-md border py-2">
-      <span className="text-sm font-semibold tabular-nums">{value ?? '—'}</span>
-      <span className="text-[10px] tracking-wide text-muted-foreground uppercase">{label}</span>
-    </div>
-  )
-}
-
 // ---- 视频叠加(方案 A):价格横幅 + 片头/片尾封面。控件在详情面板,派发进 editorStore 单例
 // (与「加入编辑器」同一入口),编辑器实时预览、走原有 Save 落库。item 即真相,配置从时间轴反推。----
 
@@ -1363,17 +1212,6 @@ function AssetGrid({ projectId, assets }: { projectId: string; assets: NonNullab
         onTagsChange={(assetId, tags) => saveTags.mutate({ projectId, assetId, tags })}
       />
     </>
-  )
-}
-
-// 表单一行。等价 workbench 的 .nle-control-group:label 直接包住控件,
-// 天然关联、不用手配 htmlFor/id。
-function Row({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <Label className="flex flex-col items-stretch gap-1">
-      <span className="text-xs font-normal text-muted-foreground">{label}</span>
-      {children}
-    </Label>
   )
 }
 
