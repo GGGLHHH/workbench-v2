@@ -20,6 +20,7 @@ import {
 import { createHttpTransport, createBrowserStorage } from '@gedatou/editor/adapters'
 import '@/overlays/register' // 注册业务 custom item 渲染器(预览端;渲染端见 render-entry.tsx)
 import { migrateLegacyOverlays } from '@/lib/video-overlays'
+import { buildDownloadName } from '@/lib/download-name'
 import { Button } from '@/components/ui/button'
 import { useDeliverProject, useProject, usePublishProject, useSaveProject } from '@/api/projects/projects'
 import { sonnerNotify } from '@/notify'
@@ -115,6 +116,7 @@ export function EditorApp() {
   // 库调 t('toolbar.undo') → 解析 v2 的 editor.toolbar.undo。v2 未覆盖的 key（exists=false）
   // 返回原 key → 库回落它内置的 zh 默认（新版本加的文案不会显示成 raw key）。
   // deps 随 i18n.language 重建 → deps context 更新 → 编辑器整体跟随 v2 语言切换。
+  const projectName = detail.data?.name
   const deps = useMemo(
     () => ({
       ...baseDeps,
@@ -122,8 +124,10 @@ export function EditorApp() {
         const full = `editor.${key}`
         return i18n.exists(full) ? (i18n.t(full, params) as string) : key
       },
+      // 下载名策略在消费方:项目名 + 导出时刻(库只透传给渲染服务清洗后挂头)
+      exportFileName: (codec: string) => buildDownloadName(codec, projectName, new Date()),
     }),
-    [i18n, i18n.language],
+    [i18n, i18n.language, projectName],
   )
 
   // 保存函数随选中项目刷新(saveMutate 引用稳定)。库触发 saveProject → PUT /bff/projects/:id。
