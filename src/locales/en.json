@@ -318,6 +318,16 @@
     "tagSaveFailed": "Failed to save tags",
     "visibilityUpdateFailed": "Failed to update visibility"
   },
+  "renders": {
+    "delete": "Delete",
+    "deleteFailed": "Delete failed",
+    "deliver": "Deliver",
+    "download": "Download",
+    "empty": "No renders yet (they appear here after you render in the editor)",
+    "history": "Rendered outputs",
+    "preview": "Preview",
+    "title": "Renders"
+  },
   "tagSelect": {
     "empty": "No matching tags",
     "loadingMore": "Loading more…",

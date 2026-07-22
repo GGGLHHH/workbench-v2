@@ -1,8 +1,7 @@
 import { useEffect, useMemo, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useSearch } from '@tanstack/react-router'
-import { Clapperboard, Loader2, UploadCloud } from 'lucide-react'
-import { toast } from 'sonner'
+import { Loader2, UploadCloud } from 'lucide-react'
 import type { UndoableState } from '@gedatou/shared'
 import {
   Canvas,
@@ -15,7 +14,6 @@ import {
   createEditorStore,
   createInstanceRefs,
   restoreLocalUrls,
-  useEditor,
 } from '@gedatou/editor'
 import { createHttpTransport, createBrowserStorage } from '@gedatou/editor/adapters'
 import '@/overlays/register' // 注册业务 custom item 渲染器(预览端;渲染端见 render-entry.tsx)
@@ -23,9 +21,12 @@ import { migrateLegacyOverlays } from '@/lib/video-overlays'
 import { buildDownloadName } from '@/lib/download-name'
 import { CanvasPresetsPanel } from '@/components/canvas-presets-panel'
 import { CoverInspectorPanel } from '@/components/overlay-inspector-panels'
+import { RendersList } from '@/components/renders-list'
 import { COVER_KIND } from '@/overlays/overlay-design'
 import { Button } from '@/components/ui/button'
-import { useDeliverProject, useProject, usePublishProject, useSaveProject } from '@/api/projects/projects'
+import { ScrollArea } from '@/components/ui/scroll-area'
+import { useScrollFade } from '@/lib/use-scroll-fade'
+import { useProject, usePublishProject, useSaveProject } from '@/api/projects/projects'
 import { sonnerNotify } from '@/notify'
 import { buildDemoState } from '@/demo-state'
 
@@ -38,7 +39,21 @@ const projectRef: { save: ((state: UndoableState) => void) | null } = { save: nu
 // 编辑器还没把本项目 state 灌进单例时不许写,免得把叠加 item 塞进上个项目/demo 的时间轴。
 export const editorProjectRef: { id: string | null } = { id: null }
 
-const transport = createHttpTransport()
+// 渲染请求带上当前项目 id:库的 startRender 不认 projectId(保持项目无关),由消费方从 ambient
+// editorProjectRef 注入。渲染服务据此把产物关联写进本机索引(server/render-index),抗刷新。
+const httpTransport = createHttpTransport()
+const transport = {
+  ...httpTransport,
+  startRender: (input: { state: UndoableState; codec: 'mp4' | 'webm'; fileName?: string }) =>
+    fetch('/api/render', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ...input, projectId: editorProjectRef.id }),
+    }).then((res) => {
+      if (!res.ok) throw new Error(`render request failed: ${res.status}`)
+      return res.json() as Promise<{ taskId: string }>
+    }),
+}
 const browser = createBrowserStorage()
 // 只包 saveProject 一个方法。库里保存(Cmd+S)是显式触发、非自动存,所以接 BFF 不会频繁写库。
 // 素材本地缓存(get/put/deleteAsset)与 loadProject 兜底照旧用 browser 实现。
@@ -81,34 +96,6 @@ function PublishButton({ id }: { id: string | null }) {
   )
 }
 
-// 交付:取编辑器最新渲染产物 URL → BFF 绑 creator-asset。renderingTasks 现经 useEditor
-// 从 context 取(context-connected),不再伸手进 editorStore 单例。
-function DeliverButton({ id }: { id: string | null }) {
-  const { t } = useTranslation()
-  const deliver = useDeliverProject()
-  const renderingTasks = useEditor((s) => s.renderingTasks)
-  return (
-    <Button
-      variant="outline"
-      size="sm"
-      disabled={!id || deliver.isPending}
-      onClick={() => {
-        if (!id) return
-        const done = [...renderingTasks].reverse().find((task) => task.status === 'done' && task.url)
-        if (!done?.url) {
-          toast.error(t('editorApp.deliverRenderFirst'))
-          return
-        }
-        deliver.mutate({ id, videoUrl: done.url })
-      }}
-      title={t('editorApp.deliverVideoTitle')}
-    >
-      {deliver.isPending ? <Loader2 className="size-4 animate-spin" /> : <Clapperboard className="size-4" />}
-      {t('editorApp.deliver')}
-    </Button>
-  )
-}
-
 export function EditorApp() {
   const { project: id } = useSearch({ from: '/' })
   const detail = useProject(id ?? null)
@@ -119,6 +106,7 @@ export function EditorApp() {
   // 库调 t('toolbar.undo') → 解析 v2 的 editor.toolbar.undo。v2 未覆盖的 key（exists=false）
   // 返回原 key → 库回落它内置的 zh 默认（新版本加的文案不会显示成 raw key）。
   // deps 随 i18n.language 重建 → deps context 更新 → 编辑器整体跟随 v2 语言切换。
+  // 下载名基础名 = 项目名(可读)。detail 到位后才有值;渲染时用户已在看项目,故已就绪。
   const projectName = detail.data?.name
   const deps = useMemo(
     () => ({
@@ -127,7 +115,8 @@ export function EditorApp() {
         const full = `editor.${key}`
         return i18n.exists(full) ? (i18n.t(full, params) as string) : key
       },
-      // 下载名策略在消费方:项目名 + 导出时刻(库只透传给渲染服务清洗后挂头)
+      // 下载名策略在消费方:项目名 + 导出时刻(库只透传给渲染服务清洗后挂头)。
+      // 无项目名时回落纯时间戳(buildDownloadName 处理 baseName 为空)。
       exportFileName: (codec: string) => buildDownloadName(codec, projectName, new Date()),
       // 封面块的检查器领域面板(时间轴选中封面 → 可改四行文字)
       customItemPanels: { [COVER_KIND]: CoverInspectorPanel },
@@ -145,6 +134,9 @@ export function EditorApp() {
   // 切项目:该工程时间轴首次到达时把编辑器 store 重置为它(沿用库自身 loadStateFromFile 的重置约定)。
   // loadedIdRef 守护 —— 保存后 detail 失效重拉(同一 id)不再二次重置,避免清空 undo 历史/选择。
   const loadedIdRef = useRef<string | null>(null)
+  // 检查器滚动:ScrollArea + scroll-fade(上下边缘渐隐),替代 aside 的原生 overflow-y-auto
+  const inspectorViewportRef = useRef<HTMLDivElement>(null)
+  useScrollFade(inspectorViewportRef, 'vertical')
   const rawState = detail.data?.state as unknown as UndoableState | undefined
   useEffect(() => {
     if (!rawState || loadedIdRef.current === id) return
@@ -177,13 +169,18 @@ export function EditorApp() {
             <Editor.CleanupAssetsButton />
             <Editor.SaveButton />
             <PublishButton id={id ?? null} />
-            <DeliverButton id={id ?? null} />
           </div>
         </Editor.Toolbar>
         <div className="flex min-h-0 flex-1">
           <Canvas />
-          <aside className="w-[349px] shrink-0 overflow-y-auto border-l border-border text-sm">
-            <Inspector canvasExtra={<CanvasPresetsPanel />} />
+          <aside className="w-[349px] shrink-0 border-l border-border text-sm">
+            <ScrollArea viewportRef={inspectorViewportRef} className="h-full">
+              {/* 包一层单 div:useScrollFade 的 ResizeObserver 观察 viewport.firstElementChild,
+                  检查器本是并列多段(Canvas/时长/导出),后段增长抓不到 → 渐隐失灵;单 wrapper 随整体长高。 */}
+              <div>
+                <Inspector canvasExtra={<CanvasPresetsPanel />} exportExtra={<RendersList id={id ?? null} />} />
+              </div>
+            </ScrollArea>
           </aside>
         </div>
         <PlaybackBar />

@@ -318,6 +318,16 @@
     "tagSaveFailed": "标签保存失败",
     "visibilityUpdateFailed": "可见性修改失败"
   },
+  "renders": {
+    "delete": "删除",
+    "deleteFailed": "删除失败",
+    "deliver": "交付",
+    "download": "下载",
+    "empty": "还没有渲染成片(在编辑器里渲染导出后出现在这里)",
+    "history": "已渲染成片",
+    "preview": "预览",
+    "title": "成片"
+  },
   "tagSelect": {
     "empty": "无匹配标签",
     "loadingMore": "加载更多…",
