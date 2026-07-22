@@ -108,6 +108,24 @@ export const CoverRenderer: React.FC<{ item: CustomItem }> = ({ item }) => {
           {l.text}
         </span>
       ))}
+      {/* 经纪人署名:带上分隔线(对齐参考 .nle-cover-frame small);flex gap 提供分隔线上方留白 */}
+      {t.agent ? (
+        <span
+          style={{
+            fontFamily: SANS,
+            fontSize: c.agentSize * H * f,
+            color: c.agentColor,
+            fontWeight: 400,
+            lineHeight: 1.2,
+            paddingTop: c.gap * H,
+            borderTop: `${Math.max(1, H * 0.0016)}px solid rgba(255,255,255,0.25)`,
+            maxWidth: '100%',
+            overflowWrap: 'anywhere',
+          }}
+        >
+          {t.agent}
+        </span>
+      ) : null}
     </div>
   )
 }

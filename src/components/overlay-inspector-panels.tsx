@@ -19,6 +19,7 @@ export function CoverInspectorPanel({ item }: { item: CustomItem }) {
     { key: 'title', label: t('coverPanel.coverTitle') },
     { key: 'price', label: t('coverPanel.price') },
     { key: 'subtitle', label: t('coverPanel.subtitle') },
+    { key: 'agent', label: t('coverPanel.agent') },
   ]
 
   return (

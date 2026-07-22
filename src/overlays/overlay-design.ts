@@ -28,6 +28,7 @@ export type CoverData = {
   title: string
   price: string // 空串则不显示价格行
   subtitle: string
+  agent: string // 经纪人署名行(带上分隔线);空串不显示。对齐参考 .nle-cover-frame small
 }
 
 export const LOWER_THIRD_DESIGN = {
@@ -54,10 +55,12 @@ export const LOWER_THIRD_DESIGN = {
 export const COVER_DESIGN = {
   eyebrowColor: '#9DB6DD',
   subtitleColor: '#C9D7EC',
+  agentColor: '#DBE6F5', // 经纪人署名行色,对齐参考 .nle-cover-frame small
   eyebrowSize: 0.035,
   titleSize: 0.076,
   priceSize: 0.053,
   subSize: 0.04,
+  agentSize: 0.03,
   gap: 0.018,
 } as const
 

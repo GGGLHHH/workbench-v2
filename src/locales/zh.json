@@ -55,6 +55,7 @@
     "save": "保存"
   },
   "coverPanel": {
+    "agent": "经纪人",
     "coverTitle": "标题",
     "eyebrow": "眉标",
     "heading": "封面文字",

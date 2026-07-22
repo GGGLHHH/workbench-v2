@@ -55,6 +55,7 @@
     "save": "Save"
   },
   "coverPanel": {
+    "agent": "Agent",
     "coverTitle": "Title",
     "eyebrow": "Eyebrow",
     "heading": "Cover text",

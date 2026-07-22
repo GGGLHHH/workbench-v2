@@ -53,6 +53,7 @@ export type ListingMeta = {
   city?: string | null
   state?: string | null
   postalCode?: string | null
+  agent?: string | null
 }
 
 const DEFAULT_BANNER: BannerConfig = { on: false, position: 'bottom', scale: 'medium', bgColor: '#000000', textColor: '#ffffff', opacity: 0.44 }
@@ -211,7 +212,7 @@ export function applyCover(s: UndoableState, meta: ListingMeta, on: boolean): Un
     shiftExcept(items, SHIFT_PINNED, (on ? D : 0) - (was ? D : 0))
     delete items[CV_ID]
     if (on) {
-      const data: CoverData = { scale: readCoverScale(items), bgColor: '#151515', eyebrow: 'FOR SALE', title: coverTitle(meta), price: usd(meta.price), subtitle: detailsLine(meta) }
+      const data: CoverData = { scale: readCoverScale(items), bgColor: '#151515', eyebrow: 'FOR SALE', title: coverTitle(meta), price: usd(meta.price), subtitle: detailsLine(meta), agent: meta.agent ?? '' }
       const it = createCustomItem({ trackId: OVERLAY_TRACK, from: 0, width: s.compositionWidth, height: s.compositionHeight, kind: COVER_KIND, label: data.title || 'Cover', data })
       it.id = CV_ID
       it.durationInFrames = D
@@ -233,7 +234,7 @@ export function applyEndCover(s: UndoableState, meta: ListingMeta, on: boolean):
         const it = items[id]
         end = Math.max(end, it.from + it.durationInFrames)
       }
-      const data: CoverData = { scale: readCoverScale(items), bgColor: '#151515', eyebrow: 'THANK YOU', title: coverTitle(meta), price: '', subtitle: [usd(meta.price), meta.address].filter(Boolean).join(' · ') }
+      const data: CoverData = { scale: readCoverScale(items), bgColor: '#151515', eyebrow: 'THANK YOU', title: coverTitle(meta), price: '', subtitle: [usd(meta.price), meta.address].filter(Boolean).join(' · '), agent: meta.agent ?? '' }
       const it = createCustomItem({ trackId: OVERLAY_TRACK, from: end, width: s.compositionWidth, height: s.compositionHeight, kind: COVER_KIND, label: data.title || 'Cover', data })
       it.id = EC_ID
       it.durationInFrames = D
@@ -391,6 +392,7 @@ export function toMeta(project: BffProject): ListingMeta {
     city: d?.city ?? null,
     state: d?.state ?? null,
     postalCode: d?.postalCode ?? null,
+    agent: d?.agent ?? null,
   }
 }
 
