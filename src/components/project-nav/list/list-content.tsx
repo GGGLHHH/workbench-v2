@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useSearch } from '@tanstack/react-router'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import { useTranslation } from 'react-i18next'
 import { Loader2 } from 'lucide-react'
@@ -8,8 +9,9 @@ import { ROW_GAP, ROW_HEIGHT } from '@/components/project-nav/constants'
 import { PanelBody } from '@/components/project-nav/shell'
 import { ProjectCard } from '@/components/project-nav/list/project-card'
 import { ListHeader } from '@/components/project-nav/list/list-header'
+import { useNavActions, useStatusChangingId } from '@/components/project-nav/nav-context'
 import { PROJECTS_PAGE_SIZE, useProjectPages } from '@/api/projects/projects'
-import type { ProjectListParams } from '@/lib/query-keys'
+import { useSession } from '@/api/session/session'
 import { useScrollFade } from '@/lib/use-scroll-fade'
 import { ScrollArea } from '@/components/ui/scroll-area'
 
@@ -21,44 +23,23 @@ const readAnchor = (key: string): Anchor | null => {
   }
 }
 
-export function ListContent({
-  params,
-  allCount,
-  unassignedCount,
-  mineCount,
-  search,
-  onSearch,
-  assignee,
-  onAssigneeChange,
-  sort,
-  onSortChange,
-  onRefreshStats,
-  onChangeStatus,
-  statusChangingId,
-  selectedId,
-  onSelect,
-  onToggleCollapse,
-  visible,
-}: {
-  params: ProjectListParams
-  allCount?: number
-  unassignedCount?: number
-  mineCount?: number
-  search: string
-  onSearch: (value: string) => void
-  assignee: string
-  onAssigneeChange: (value: string) => void
-  sort: string
-  onSortChange: (value: string) => void
-  onRefreshStats: () => void
-  onChangeStatus: (id: string, action: string) => void
-  statusChangingId: string | null
-  selectedId: string | null
-  onSelect: (id: string) => void
-  onToggleCollapse: () => void
-  visible: boolean
-}) {
+export function ListContent({ visible }: { visible: boolean }) {
   const { t } = useTranslation()
+
+  // 易变筛选态就地从 URL 读(ProjectNav 不再穿参);'me' 哨兵解析成会话 user.id,
+  // 会话未就绪时退回全部 —— 与旧 ProjectNav 的 apiAssignee/params2 逻辑一致。
+  const p = useSearch({ from: '/' })
+  const meId = useSession().data?.user?.id
+  const search = p.search ?? ''
+  const rawAssignee = p.assignee ?? ''
+  const apiAssignee = rawAssignee === 'me' ? (meId ?? '') : rawAssignee
+  const sort = p.sort ?? 'created_desc'
+  const params = useMemo(() => ({ search, assignee: apiAssignee, sort }), [search, apiAssignee, sort])
+  const selectedId = p.project ?? null
+  // 稳定回调从 context 取(refreshStats 供同步后刷计数);pending id 单独订阅。
+  const { refreshStats } = useNavActions()
+  const statusChangingId = useStatusChangingId()
+
   const viewportRef = useRef<HTMLDivElement>(null)
   const tabsViewportRef = useRef<HTMLDivElement>(null)
   useScrollFade(viewportRef, 'vertical') // 列表上下阴影
@@ -168,24 +149,14 @@ export function ListContent({
   // memo 化的头部要稳定的回调,否则每帧新函数、memo 失效
   const onSync = useCallback(() => {
     refetch()
-    onRefreshStats()
-  }, [refetch, onRefreshStats])
+    refreshStats()
+  }, [refetch, refreshStats])
 
   return (
     <PanelBody>
       <ListHeader
-        search={search}
-        onSearch={onSearch}
-        assignee={assignee}
-        onAssigneeChange={onAssigneeChange}
-        sort={sort}
-        onSortChange={onSortChange}
-        allCount={allCount ?? total}
-        unassignedCount={unassignedCount}
-        mineCount={mineCount}
         syncing={isFetching}
         onSync={onSync}
-        onToggleCollapse={onToggleCollapse}
         tabsViewportRef={tabsViewportRef}
       />
 
@@ -218,8 +189,6 @@ export function ListContent({
                       project={project as ProjectSummary}
                       active={selectedId === project.id}
                       busy={statusChangingId === project.id}
-                      onOpen={onSelect}
-                      onChangeStatus={onChangeStatus}
                     />
                   ) : (
                     // tombstone:该行所在页还在路上。占住估算高度,避免滚动条抽搐

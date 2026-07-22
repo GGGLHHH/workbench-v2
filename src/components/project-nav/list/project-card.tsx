@@ -3,35 +3,34 @@ import { Building2, Clapperboard, Clock, Image as ImageIcon, User } from 'lucide
 
 import type { ProjectSummary } from '@/components/project-nav/types'
 import { ProjectStatusMenu } from '@/components/project-nav/status-menu'
+import { useNavActions } from '@/components/project-nav/nav-context'
 import { MediaCard, Thumb, duration } from '@/components/media-card'
 import { relTime } from '@/lib/format'
 
 // memo:滚动时虚拟化器每帧都产出新数组,不 memo 的话这 20 张卡片(连同里面的
 // <video preload="metadata">)每帧全部重新协调 —— 这是滚动卡顿的最后一块。
-// 回调收 id 而不是闭包,否则每行每帧都是新函数,memo 直接失效。
+// 回调从 context 取(identity 恒定),memo 只比 { project, active, busy };
+// 硬约束:此处绝不读 useSearch 等易变 hook,否则每次打字都会整表重渲染。
 export const ProjectCard = memo(function ProjectCard({
   project,
   active,
   busy,
-  onOpen,
-  onChangeStatus,
 }: {
   project: ProjectSummary
   active: boolean
   busy: boolean
-  onOpen: (id: string) => void
-  onChangeStatus: (id: string, action: string) => void
 }) {
+  const { selectProject, changeProjectStatus } = useNavActions()
   return (
     <MediaCard
       active={active}
-      onOpen={() => onOpen(project.id)}
+      onOpen={() => selectProject(project.id)}
       title={project.title}
       titleAttr={project.title}
       thumbnail={<Thumb url={project.thumbnailUrl} kind={project.thumbnailKind} className="size-14" />}
       footer={
         <>
-          <ProjectStatusMenu status={project.status} busy={busy} onAction={(action) => onChangeStatus(project.id, action)} />
+          <ProjectStatusMenu status={project.status} busy={busy} onAction={(action) => changeProjectStatus(project.id, action)} />
           <span className="text-xs text-muted-foreground">{relTime(project.updatedAt)}</span>
         </>
       }

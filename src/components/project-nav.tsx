@@ -14,12 +14,10 @@ import type { NavActions } from '@/components/project-nav/nav-context'
 import { NavActionsProvider, StatusChangingProvider } from '@/components/project-nav/nav-context'
 
 import {
-  useAssigneeCount,
   useChangeProjectStatus,
   useProject,
   useProjectStats,
 } from '@/api/projects/projects'
-import { useSession } from '@/api/session/session'
 
 // 手写双层侧边栏(互斥展开):第一层=项目列表(对齐 xchangeai-workbench 卡片:缩略图 +
 // 负责人/机构 + resources/clips/时长 + 状态徽章 + 更新时间;搜索 + 状态筛选 tab + 计数 +
@@ -31,9 +29,7 @@ export function ProjectNav() {
   const params = useSearch({ from: '/' })
   const navigate = useNavigate({ from: '/' })
   const selectedId = params.project ?? null
-  const search = params.search ?? ''
-  const assignee = params.assignee ?? '' // URL 哨兵:'' | 'unassigned' | 'me'
-  const sort = params.sort ?? 'created_desc'
+  // 搜索/筛选/排序的易变态不再在此展开 —— 列表面板(ListHeader/ListContent)就地读 useSearch。
 
   // 改筛选用 replace:搜索框每 300ms 防抖发一次,push 会把历史记录塞满。
   // 选项目用 push:后退键回到上一个看的项目(见 AskUserQuestion 里选的那条)。
@@ -57,17 +53,8 @@ export function ProjectNav() {
     defaultValue: false,
   })
 
-  // 「我的项目」= 指派给当前会话用户 → 查询时把哨兵 'me' 解析成自身 id;会话未就绪时退回全部。
-  const meId = useSession().data?.user?.id
-  const apiAssignee = assignee === 'me' ? (meId ?? '') : assignee
-
-  // 列表数据由 ListContent 自己按可见区间取(虚拟化 → 随机访问),这里只留 stats + 两个计数供筛选行。
-  const params2 = useMemo(() => ({ search, assignee: apiAssignee, sort }), [search, apiAssignee, sort])
+  // stats 只留着给 refreshStats(手动同步后刷计数)—— 筛选行的三档计数改由 ListHeader 就地取。
   const stats = useProjectStats()
-  // 筛选行计数:All=stats.total;Unassigned/My 各发一个 limit:1 列表读 total(全局,不跟随搜索)。
-  const allCount = stats.data?.total
-  const unassignedCount = useAssigneeCount('unassigned', true).data
-  const mineCount = useAssigneeCount(meId ?? '', Boolean(meId)).data
   const statsRefetch = stats.refetch
   const refreshStats = useCallback(() => void statsRefetch(), [statsRefetch])
   const detail = useProject(selectedId)
@@ -155,27 +142,7 @@ export function ProjectNav() {
             topAction={<CollapseToggle collapsed={collapsed} onToggle={() => setCollapsed((v) => !v)} />}
           />
         }
-        panel={
-          <ListContent
-            visible={listExpanded}
-            onToggleCollapse={() => setCollapsed(true)}
-            params={params2}
-            allCount={allCount}
-            unassignedCount={unassignedCount}
-            mineCount={mineCount}
-            search={search}
-            onSearch={onSearch}
-            assignee={assignee}
-            onAssigneeChange={onAssigneeChange}
-            sort={sort}
-            onSortChange={onSortChange}
-            onRefreshStats={refreshStats}
-            onChangeStatus={changeProjectStatus}
-            statusChangingId={changeStatus.isPending ? (changeStatus.variables?.id ?? null) : null}
-            selectedId={selectedId}
-            onSelect={selectProject}
-          />
-        }
+        panel={<ListContent visible={listExpanded} />}
       />
 
       <Section

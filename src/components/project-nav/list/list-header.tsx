@@ -1,9 +1,13 @@
 import { memo } from 'react'
+import { useSearch } from '@tanstack/react-router'
 import { useTranslation } from 'react-i18next'
 import { CloudDownload, Loader2 } from 'lucide-react'
 
 import { ASSIGNEE_FILTERS, SORT_OPTIONS } from '@/components/project-nav/constants'
 import { CollapseToggle } from '@/components/project-nav/shell'
+import { useNavActions } from '@/components/project-nav/nav-context'
+import { useAssigneeCount, useProjectStats } from '@/api/projects/projects'
+import { useSession } from '@/api/session/session'
 import { LanguageToggle } from '@/components/language-toggle'
 import { ThemeToggle } from '@/components/theme-toggle'
 import { cn } from '@/lib/utils'
@@ -14,44 +18,36 @@ import { SearchInput } from '@/components/form/search-input'
 
 // 头部单独 memo:滚动时虚拟化器每帧都让 ListContent 重渲染,而搜索框、11 个状态 tab、
 // 排序下拉这些跟滚动毫无关系 —— 不隔离的话它们每帧都跟着 diff 一遍。
+// 头部持有搜索/筛选/排序,本就该随筛选变更重渲染,所以它就地读 useSearch + 计数 hook,
+// 回调从稳定的 NavActions context 取。syncing/onSync 是 ListContent 的局部状态,仍走 prop。
 export const ListHeader = memo(function ListHeader({
-  search,
-  onSearch,
-  assignee,
-  onAssigneeChange,
-  sort,
-  onSortChange,
-  allCount,
-  unassignedCount,
-  mineCount,
   syncing,
   onSync,
-  onToggleCollapse,
   tabsViewportRef,
 }: {
-  search: string
-  onSearch: (value: string) => void
-  assignee: string
-  onAssigneeChange: (value: string) => void
-  sort: string
-  onSortChange: (value: string) => void
-  // 三档计数(数字为原始类型 → memo 逐值比较稳定;undefined = 尚未加载)
-  allCount?: number
-  unassignedCount?: number
-  mineCount?: number
   syncing: boolean
   onSync: () => void
-  onToggleCollapse: () => void
   tabsViewportRef: React.RefObject<HTMLDivElement | null>
 }) {
   const { t } = useTranslation()
+  const params = useSearch({ from: '/' })
+  const search = params.search ?? ''
+  const assignee = params.assignee ?? ''
+  const sort = params.sort ?? 'created_desc'
+  const { onSearch, onAssigneeChange, onSortChange, toggleCollapse } = useNavActions()
+  // 三档计数(数字为原始类型;undefined = 尚未加载):All=stats.total;
+  // Unassigned/My 各发一个 limit:1 列表读 total(全局,不跟随搜索)。
+  const meId = useSession().data?.user?.id
+  const allCount = useProjectStats().data?.total
+  const unassignedCount = useAssigneeCount('unassigned', true).data
+  const mineCount = useAssigneeCount(meId ?? '', Boolean(meId)).data
   return (
     <>
       {/* 头部:标题 + 同步 + 搜索 + 状态筛选 tab */}
       <div className="flex flex-col gap-2 border-b p-2">
         <div className="flex items-center gap-2 px-1">
           {/* 与收起态 rail 顶部的 toggle 同一位置(最左),避免来回切时按钮跳位 */}
-          <CollapseToggle collapsed={false} onToggle={onToggleCollapse} />
+          <CollapseToggle collapsed={false} onToggle={toggleCollapse} />
           <span className="flex-1 text-sm font-semibold">{t('projectNav.projects')}</span>
           <ThemeToggle />
           <LanguageToggle />
