@@ -10,6 +10,8 @@ import type { Panel } from '@/components/project-nav/types'
 import { CollapseToggle, Rail, Section } from '@/components/project-nav/shell'
 import { ListContent } from '@/components/project-nav/list/list-content'
 import { DetailContent } from '@/components/project-nav/detail/detail-content'
+import type { NavActions } from '@/components/project-nav/nav-context'
+import { NavActionsProvider, StatusChangingProvider } from '@/components/project-nav/nav-context'
 
 import {
   useAssigneeCount,
@@ -71,10 +73,17 @@ export function ProjectNav() {
   const detail = useProject(selectedId)
 
   // 点 rail / 选项目 → 展开该栏(顺带解除整体收起)
-  const openPanel = (panel: Panel) => {
-    setActive(panel)
-    setCollapsed(false)
-  }
+  // useCallback:要进 actions memo,身份必须稳,否则 memo 每次重建、Task 12/13 的消费者白订阅
+  const openPanel = useCallback(
+    (panel: Panel) => {
+      setActive(panel)
+      setCollapsed(false)
+    },
+    [setActive, setCollapsed],
+  )
+  const collapse = useCallback(() => setCollapsed(true), [setCollapsed])
+  const toggleCollapse = useCallback(() => setCollapsed((v) => !v), [setCollapsed])
+  const backToList = useCallback(() => setActive('list'), [setActive])
 
   // useCallback:这两个会一路传到 memo 化的 ProjectCard,身份不稳 memo 就失效
   const selectProject = useCallback(
@@ -96,10 +105,41 @@ export function ProjectNav() {
     [changeStatusMutate],
   )
 
+  // 稳定回调聚成一个 identity 恒定的 value(deps 覆盖全 10 个字段);消费在 Task 12/13。
+  const actions = useMemo<NavActions>(
+    () => ({
+      selectProject,
+      changeProjectStatus,
+      onSearch,
+      onAssigneeChange,
+      onSortChange,
+      refreshStats,
+      openPanel,
+      collapse,
+      toggleCollapse,
+      backToList,
+    }),
+    [
+      selectProject,
+      changeProjectStatus,
+      onSearch,
+      onAssigneeChange,
+      onSortChange,
+      refreshStats,
+      openPanel,
+      collapse,
+      toggleCollapse,
+      backToList,
+    ],
+  )
+  const statusChangingId = changeStatus.isPending ? (changeStatus.variables?.id ?? null) : null
+
+  // 宽度走 CSS 变量(对齐官方 sidebar 的 --sidebar-width / --sidebar-width-icon):
+  // Section 与其中的层共用同一组值,不会各写各的magic number 而漂移。
   return (
-    // 宽度走 CSS 变量(对齐官方 sidebar 的 --sidebar-width / --sidebar-width-icon):
-    // Section 与其中的层共用同一组值,不会各写各的magic number 而漂移。
-    <div
+    <NavActionsProvider value={actions}>
+      <StatusChangingProvider value={statusChangingId}>
+        <div
       className="flex h-full shrink-0 border-r bg-sidebar text-sidebar-foreground"
       style={{ '--panel-w': '24rem', '--panel-w-icon': '3rem' } as React.CSSProperties}
     >
@@ -160,5 +200,7 @@ export function ProjectNav() {
         }
       />
     </div>
+      </StatusChangingProvider>
+    </NavActionsProvider>
   )
 }
