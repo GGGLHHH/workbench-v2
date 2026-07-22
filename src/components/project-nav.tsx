@@ -3,7 +3,6 @@ import { useNavigate, useSearch } from '@tanstack/react-router'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import useEmblaCarousel from 'embla-carousel-react'
 import { useLocalStorageState } from 'ahooks'
-import { format, formatDistanceToNow } from 'date-fns'
 import { useTranslation } from 'react-i18next'
 import {
   Building2,
@@ -52,6 +51,7 @@ import {
 } from '@/api/projects/projects'
 import { useSession } from '@/api/session/session'
 import { toast } from 'sonner'
+import { absTime, relTime, statusLabel, usd } from '@/lib/format'
 import { addProjectAssetToEditor } from '@/lib/add-to-editor'
 import { AssetViewer } from '@/components/asset-viewer'
 import { LanguageToggle } from '@/components/language-toggle'
@@ -177,32 +177,6 @@ const STATUS_ACTIONS: Record<string, StatusAction[]> = {
   rejected: [{ action: 'reassign', label: 'Send back to creator', primary: true }],
   published: [{ action: 'revert', label: 'Revert to approved' }],
 }
-
-const statusLabel = (status: string) => status.replaceAll('_', ' ')
-
-// 相对时间(date-fns),如 "5 minutes ago" / "2 days ago"
-const relTime = (iso: string) => {
-  try {
-    return formatDistanceToNow(new Date(iso), { addSuffix: true })
-  } catch {
-    return iso
-  }
-}
-
-// 绝对时间。workbench 只有相对时间("Updated 3d ago"),详情面板补上准确时刻。
-const absTime = (iso: string) => {
-  try {
-    return format(new Date(iso), 'yyyy-MM-dd HH:mm')
-  } catch {
-    return iso
-  }
-}
-
-// 价格:对齐 xchangeai-workbench 服务端 formatPrice(Intl USD、无小数)
-const usd = (n: number | null | undefined) =>
-  typeof n === 'number'
-    ? new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(n)
-    : null
 
 // 排序选项。只留服务端支持的两个时间字段(xchangeai 的 SortBy 枚举就只有 created_at /
 // updated_at)。按名字排已移除:它原先是在"已加载的那部分"上排,滚出去的部分不参与,
