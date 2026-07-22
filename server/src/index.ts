@@ -12,6 +12,7 @@ import { contentDisposition, type UndoableState } from '@gedatou/shared';
 import { config } from './config';
 import { createUploadUrl, deleteObject, isSafeKey, writeStream } from './storage';
 import { enqueueRender, tasks } from './renderer';
+import { isValidProjectId, readIndex, removeRender } from './render-index';
 import { transcribeAudio } from './whisper';
 
 // bodyLimit: /render 携带完整工程 state；素材 PUT 走原始流（本地视频可较大）
@@ -66,15 +67,33 @@ app.post<{ Body: { key: string } }>('/api/delete-asset', async (req, reply) => {
   return { ok: true };
 });
 
-// 4) 发起渲染
-app.post<{ Body: { state: UndoableState; codec: 'mp4' | 'webm'; fileName?: string } }>(
+// 4) 发起渲染。projectId 由消费方(workbench transport)从当前项目注入,渲染完成后据此写本机索引。
+app.post<{ Body: { state: UndoableState; codec: 'mp4' | 'webm'; fileName?: string; projectId?: string } }>(
   '/api/render',
   async (req, reply) => {
-    const { state, codec, fileName } = req.body ?? {};
+    const { state, codec, fileName, projectId } = req.body ?? {};
     if (!state || (codec !== 'mp4' && codec !== 'webm')) {
       return reply.code(400).send({ error: 'state and codec (mp4|webm) required' });
     }
-    return { taskId: enqueueRender(state, codec, fileName) };
+    return { taskId: enqueueRender(state, codec, fileName, projectId) };
+  },
+);
+
+// 4b) 某项目的渲染历史(本机索引,留历史)。产物与关联都在本机,不涉远程。
+app.get<{ Querystring: { projectId?: string } }>('/api/renders', async (req, reply) => {
+  const projectId = req.query?.projectId;
+  if (!projectId || !isValidProjectId(projectId)) return reply.code(400).send({ error: 'projectId required' });
+  return { renders: await readIndex(projectId) };
+});
+
+// 4c) 删一条渲染历史(并删磁盘产物)
+app.delete<{ Params: { taskId: string }; Querystring: { projectId?: string } }>(
+  '/api/renders/:taskId',
+  async (req, reply) => {
+    const projectId = req.query?.projectId;
+    if (!projectId || !isValidProjectId(projectId)) return reply.code(400).send({ error: 'projectId required' });
+    await removeRender(projectId, req.params.taskId);
+    return { ok: true };
   },
 );
 

@@ -6,6 +6,7 @@ import { bundle } from '@remotion/bundler';
 import { ensureBrowser, renderMedia, selectComposition } from '@remotion/renderer';
 import { newId, sanitizeFileName, type UndoableState } from '@gedatou/shared';
 import { writeBuffer } from './storage';
+import { appendRender, isValidProjectId } from './render-index';
 
 // 渲染入口：v2 自己的 render-entry.tsx（先注册业务 custom item 渲染器，再 registerRoot 库的
 // CompositionRoot，id="Main"）——bundle 库内 entry 会缺 lowerThird/cover 渲染器。
@@ -44,6 +45,7 @@ export const enqueueRender = (
   state: UndoableState,
   codec: 'mp4' | 'webm',
   fileName?: string,
+  projectId?: string,
 ): string => {
   const taskId = newId();
   tasks.set(taskId, { status: 'queued', progress: 0 });
@@ -74,6 +76,21 @@ export const enqueueRender = (
       task.url = `${url}?filename=${encodeURIComponent(downloadName)}`;
       task.progress = 1;
       task.status = 'done';
+      // 关联落本机索引(留历史):完成即写盘,不依赖浏览器还开着 → 抗刷新。
+      // 索引出错不影响渲染成功(产物 URL 已可用),仅记日志。
+      if (projectId && isValidProjectId(projectId)) {
+        await appendRender(projectId, {
+          taskId,
+          url: task.url,
+          fileName: downloadName,
+          codec,
+          createdAt: new Date().toISOString(),
+          width: composition.width,
+          height: composition.height,
+          durationInFrames: composition.durationInFrames,
+          fps: composition.fps,
+        }).catch((e) => console.error('[render-index] append failed', e));
+      }
     } catch (err) {
       task.status = 'error';
       task.error = err instanceof Error ? err.message : String(err);
