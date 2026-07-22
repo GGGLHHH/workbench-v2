@@ -1,6 +1,5 @@
-import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useSearch } from '@tanstack/react-router'
-import { useVirtualizer } from '@tanstack/react-virtual'
 import useEmblaCarousel from 'embla-carousel-react'
 import { useLocalStorageState } from 'ahooks'
 import { useTranslation } from 'react-i18next'
@@ -8,7 +7,6 @@ import {
   ChevronLeft,
   Clapperboard,
   Clock,
-  CloudDownload,
   ExternalLink,
   FolderClosed,
   Image as ImageIcon,
@@ -22,13 +20,12 @@ import {
 import type { BffProject } from '@/generated/api-types'
 // 类型引用,verbatimModuleSyntax 下会被完全擦除 → 与路由不构成运行时循环依赖
 import type { ProjectSearch } from '@/routes/index'
-import type { Anchor, Panel, ProjectSummary } from '@/components/project-nav/types'
+import type { Panel } from '@/components/project-nav/types'
 import type { MetaDraft } from '@/components/project-nav/detail/meta-draft'
-import { ASSIGNEE_FILTERS, ROW_GAP, ROW_HEIGHT, SORT_OPTIONS } from '@/components/project-nav/constants'
-import { CollapseToggle, Layer, PanelBody, Rail, Section } from '@/components/project-nav/shell'
+import { CollapseToggle, PanelBody, Rail, Section } from '@/components/project-nav/shell'
 import { Field, Group, Metric, Row } from '@/components/project-nav/fields'
 import { ProjectStatusMenu } from '@/components/project-nav/status-menu'
-import { ProjectCard } from '@/components/project-nav/list/project-card'
+import { ListContent } from '@/components/project-nav/list/list-content'
 import { VisibilityMenu } from '@/components/project-nav/detail/visibility-menu'
 import { AnalyticsPanel, PUBLISHED_STATUSES } from '@/components/project-nav/detail/analytics-panel'
 import { detailToDraft, draftToMeta } from '@/components/project-nav/detail/meta-draft'
@@ -36,12 +33,10 @@ import { MetaForm } from '@/components/project-nav/detail/meta-form'
 import { AssetGrid } from '@/components/project-nav/detail/asset-grid'
 
 import {
-  PROJECTS_PAGE_SIZE,
   useAssigneeCount,
   useChangeProjectStatus,
   useProject,
   useProjectOptions,
-  useProjectPages,
   useProjectStats,
   useSaveProjectAssignee,
   useSaveProjectMeta,
@@ -49,19 +44,13 @@ import {
 } from '@/api/projects/projects'
 import { useSession } from '@/api/session/session'
 import { absTime, relTime, usd } from '@/lib/format'
-import { LanguageToggle } from '@/components/language-toggle'
-import { ThemeToggle } from '@/components/theme-toggle'
 import { CommentPane } from '@/components/comment-pane'
-import type { ProjectListParams } from '@/lib/query-keys'
-import { cn } from '@/lib/utils'
 import { useScrollFade } from '@/lib/use-scroll-fade'
 import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Thumb, duration } from '@/components/media-card'
 import { Separator } from '@/components/ui/separator'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { SearchInput } from '@/components/form/search-input'
 import { editorProjectRef } from '@/editor-app'
 import type { ListingMeta } from '@/lib/video-overlays'
 import { refreshBannerText } from '@/lib/video-overlays-store'
@@ -70,14 +59,6 @@ import { VideoOverlaysSection } from '@/components/project-nav/overlays/video-ov
 // 手写双层侧边栏(互斥展开):第一层=项目列表(对齐 xchangeai-workbench 卡片:缩略图 +
 // 负责人/机构 + resources/clips/时长 + 状态徽章 + 更新时间;搜索 + 状态筛选 tab + 计数 +
 // 下拉分页),第二层=项目详情(后续再细化)。展开一个 → 另一个收成窄图标 rail。
-
-const readAnchor = (key: string): Anchor | null => {
-  try {
-    return JSON.parse(sessionStorage.getItem(key) ?? 'null') as Anchor | null
-  } catch {
-    return null
-  }
-}
 
 export function ProjectNav() {
   const { t } = useTranslation()
@@ -216,336 +197,6 @@ export function ProjectNav() {
         }
       />
     </div>
-  )
-}
-
-// 头部单独 memo:滚动时虚拟化器每帧都让 ListContent 重渲染,而搜索框、11 个状态 tab、
-// 排序下拉这些跟滚动毫无关系 —— 不隔离的话它们每帧都跟着 diff 一遍。
-const ListHeader = memo(function ListHeader({
-  search,
-  onSearch,
-  assignee,
-  onAssigneeChange,
-  sort,
-  onSortChange,
-  allCount,
-  unassignedCount,
-  mineCount,
-  syncing,
-  onSync,
-  onToggleCollapse,
-  tabsViewportRef,
-}: {
-  search: string
-  onSearch: (value: string) => void
-  assignee: string
-  onAssigneeChange: (value: string) => void
-  sort: string
-  onSortChange: (value: string) => void
-  // 三档计数(数字为原始类型 → memo 逐值比较稳定;undefined = 尚未加载)
-  allCount?: number
-  unassignedCount?: number
-  mineCount?: number
-  syncing: boolean
-  onSync: () => void
-  onToggleCollapse: () => void
-  tabsViewportRef: React.RefObject<HTMLDivElement | null>
-}) {
-  const { t } = useTranslation()
-  return (
-    <>
-      {/* 头部:标题 + 同步 + 搜索 + 状态筛选 tab */}
-      <div className="flex flex-col gap-2 border-b p-2">
-        <div className="flex items-center gap-2 px-1">
-          {/* 与收起态 rail 顶部的 toggle 同一位置(最左),避免来回切时按钮跳位 */}
-          <CollapseToggle collapsed={false} onToggle={onToggleCollapse} />
-          <span className="flex-1 text-sm font-semibold">{t('projectNav.projects')}</span>
-          <ThemeToggle />
-          <LanguageToggle />
-          <Button
-            variant="ghost"
-            size="sm"
-            className="h-7 gap-1 px-2 text-xs"
-            disabled={syncing}
-            onClick={onSync}
-          >
-            {syncing ? <Loader2 className="size-3.5 animate-spin" /> : <CloudDownload className="size-3.5" />} {t('projectNav.sync')}
-          </Button>
-        </div>
-        <SearchInput
-          value={search}
-          onValueChange={onSearch}
-          placeholder={t('projectNav.searchPlaceholder')}
-          aria-label={t('projectNav.searchAria')}
-          inputClassName="h-8 text-sm"
-        />
-        {/* tab 条本来就有左右渐隐,再加一条横向滚动条只会挤掉半行高度 */}
-        <ScrollArea viewportRef={tabsViewportRef} scrollbar="none" className="w-full">
-          <div className="flex w-max gap-1">
-            {ASSIGNEE_FILTERS.map((f) => {
-              const count = f.id === '' ? allCount : f.id === 'unassigned' ? unassignedCount : mineCount
-              const isActive = assignee === f.id
-              return (
-                <button
-                  key={f.id || 'all'}
-                  type="button"
-                  onClick={() => onAssigneeChange(f.id)}
-                  className={cn(
-                    'flex shrink-0 items-center gap-1 rounded-md px-2 py-1 text-xs whitespace-nowrap transition-colors',
-                    isActive
-                      ? 'bg-sidebar-accent text-sidebar-accent-foreground'
-                      : 'text-muted-foreground hover:bg-sidebar-accent/50',
-                  )}
-                >
-                  <span>{t(f.labelKey)}</span>
-                  {count !== undefined ? (
-                    <span className={cn('tabular-nums', isActive && 'font-semibold')}>{count}</span>
-                  ) : null}
-                </button>
-              )
-            })}
-          </div>
-        </ScrollArea>
-      </div>
-
-      <div className="flex items-center justify-between px-3 py-2 text-xs text-muted-foreground">
-        <span className="font-medium tracking-wide">RECENT PROJECTS</span>
-        <Select items={SORT_OPTIONS} value={sort} onValueChange={(value) => onSortChange(String(value))}>
-          <SelectTrigger
-            size="sm"
-            className="h-6 gap-1 border-0 bg-transparent px-1.5 text-xs text-muted-foreground shadow-none hover:text-foreground focus-visible:ring-0 dark:bg-transparent dark:hover:bg-transparent"
-          >
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent align="end">
-            {SORT_OPTIONS.map((option) => (
-              <SelectItem key={option.value} value={option.value}>
-                {option.label}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
-
-    </>
-  )
-})
-
-function ListContent({
-  params,
-  allCount,
-  unassignedCount,
-  mineCount,
-  search,
-  onSearch,
-  assignee,
-  onAssigneeChange,
-  sort,
-  onSortChange,
-  onRefreshStats,
-  onChangeStatus,
-  statusChangingId,
-  selectedId,
-  onSelect,
-  onToggleCollapse,
-  visible,
-}: {
-  params: ProjectListParams
-  allCount?: number
-  unassignedCount?: number
-  mineCount?: number
-  search: string
-  onSearch: (value: string) => void
-  assignee: string
-  onAssigneeChange: (value: string) => void
-  sort: string
-  onSortChange: (value: string) => void
-  onRefreshStats: () => void
-  onChangeStatus: (id: string, action: string) => void
-  statusChangingId: string | null
-  selectedId: string | null
-  onSelect: (id: string) => void
-  onToggleCollapse: () => void
-  visible: boolean
-}) {
-  const { t } = useTranslation()
-  const viewportRef = useRef<HTMLDivElement>(null)
-  const tabsViewportRef = useRef<HTMLDivElement>(null)
-  useScrollFade(viewportRef, 'vertical') // 列表上下阴影
-  useScrollFade(tabsViewportRef, 'horizontal') // 状态 tab 左右阴影
-
-  // 锚点按筛选分桶:换了筛选就是另一批数据,位置不该串。
-  const anchorKey = `nav.anchor:${params.search}|${params.assignee}|${params.sort}`
-  const [anchor, setAnchor] = useState<Anchor | null>(() => readAnchor(anchorKey))
-
-  // 该取哪几页。初值直接落在锚点所在页,于是「刷新 → 回到原位」只有一个请求,
-  // 与滚动深度无关(第 20 条和第 3847 条一样快)。
-  const anchorPage = Math.floor((anchor?.index ?? 0) / PROJECTS_PAGE_SIZE)
-  const [pageRange, setPageRange] = useState(() => ({ start: anchorPage, end: anchorPage }))
-  const { total, itemAt, isPending, isError, isFetching, refetch } = useProjectPages(params, pageRange)
-
-  // 定高:实测全部 70 行都是 115px(标题 truncate 不换行、面板定宽),
-  // 所以不挂 measureElement —— 每行一个 ResizeObserver、每次测量触发重算,
-  // 是滚动卡顿的大头。定高还顺带让锚点偏移天然精确,不存在估算漂移。
-  const virtualizer = useVirtualizer({
-    count: total,
-    getScrollElement: () => viewportRef.current,
-    estimateSize: () => ROW_HEIGHT,
-    overscan: 6,
-    gap: ROW_GAP,
-  })
-  const virtualItems = virtualizer.getVirtualItems()
-
-  // 虚拟化器报告可见区间 → 驱动取页。相等时不 setState,否则每帧一次渲染循环。
-  // 有锚点但还没落位时先按兵不动:此刻 scrollTop 还是 0,区间是 [0,13],
-  // 照着它取页会白拉一次第 0 页(还原完立刻就作废)。
-  useEffect(() => {
-    if (anchor && !restoredRef.current) return
-    const first = virtualItems[0]?.index
-    const last = virtualItems[virtualItems.length - 1]?.index
-    if (first === undefined || last === undefined) return
-    // 量化到页号再 setState:按条目算的话每滚一行就是一次 setState + useQueries 重建,
-    // 等于把渲染摊到每一帧;按页算 20 行才动一次。
-    const start = Math.floor(first / PROJECTS_PAGE_SIZE)
-    const end = Math.floor(last / PROJECTS_PAGE_SIZE)
-    setPageRange((r) => (r.start === start && r.end === end ? r : { start, end }))
-  }, [virtualItems, anchor])
-
-  // 切筛选 = 换了一批数据:重读该桶的锚点、解封还原标记(否则回到原筛选也不还原了)、
-  // 该桶没存过就回顶(视口不会自己归零,会停在上一份数据的位置上)。
-  const restoredRef = useRef(false)
-  useEffect(() => {
-    const next = readAnchor(anchorKey)
-    restoredRef.current = false
-    setAnchor(next)
-    const page = Math.floor((next?.index ?? 0) / PROJECTS_PAGE_SIZE)
-    setPageRange({ start: page, end: page })
-    if (!next) viewportRef.current?.scrollTo({ top: 0 })
-  }, [anchorKey])
-
-  // 还原。目标像素 = 该行的起始偏移 + 当时视口切在这行的第几像素;
-  // 少了后半截只能落到「对的那一行」,落不回「一模一样的画面」。
-  //
-  // 不能一上来就把 restoredRef 封上:此刻容器可能还没高度、锚点那页可能还在路上,
-  // 定位就是空操作。所以每次测量更新都重试,直到 scrollTop 真的落到位才封 ——
-  // 封早了会停在顶部,封晚了(不封)用户往回滚会被反复拽回去。
-  useEffect(() => {
-    const el = viewportRef.current
-    if (restoredRef.current || !anchor || !total || !visible || !el?.clientHeight) return
-    const target = virtualizer.getOffsetForIndex(anchor.index, 'start')?.[0]
-    if (target === undefined) return
-    const want = target + anchor.offsetInItem
-    virtualizer.scrollToOffset(want)
-    if (Math.abs(el.scrollTop - want) <= 1) restoredRef.current = true
-  }, [anchor, total, visible, virtualizer, virtualItems])
-
-  // 记锚点:顶部第一条的下标 + 视口切在它内部的偏移(Chrome «Complexities of an
-  // infinite scroller» 的做法)。存下标而不是 scrollTop —— 后者在行高被测量修正后就失真了。
-  useEffect(() => {
-    const el = viewportRef.current
-    if (!el || !visible) return
-    let raf = 0
-    const save = () => {
-      raf = 0
-      // 还没落位就别存 —— 会把"未还原的位置"覆盖掉真正的锚点
-      if (anchor && !restoredRef.current) return
-      // 取「视口里真正切到的那一条」,不是 getVirtualItems()[0](后者是 overscan 的头一条,
-      // 在视口上方,算出的 offsetInItem 会跨好几行)。
-      // 找不到就直接放弃,不兜底 —— 切筛选的瞬间虚拟化器已重置到 index 0 而 scrollTop 还停在
-      // 旧位置,这时硬凑会存出 {index:0, offsetInItem:5000} 这种跨桶污染的垃圾。
-      const rows = virtualizer.getVirtualItems()
-      const first = rows.find((v) => v.start <= el.scrollTop && v.end > el.scrollTop)
-      if (!first) return
-      sessionStorage.setItem(
-        anchorKey,
-        JSON.stringify({ index: first.index, offsetInItem: Math.round(el.scrollTop - first.start) }),
-      )
-    }
-    const onScroll = () => {
-      if (!raf) raf = requestAnimationFrame(save)
-    }
-    el.addEventListener('scroll', onScroll, { passive: true })
-    window.addEventListener('pagehide', save)
-    return () => {
-      if (raf) cancelAnimationFrame(raf)
-      el.removeEventListener('scroll', onScroll)
-      window.removeEventListener('pagehide', save)
-      // 不在 cleanup 里补存:切桶/卸载那一刻虚拟化器已重置而 scrollTop 未变,
-      // 此时的几何是不可信的。滚动时的 rAF + pagehide 已经覆盖了真实场景。
-    }
-  }, [anchorKey, visible, virtualizer, anchor])
-
-  // memo 化的头部要稳定的回调,否则每帧新函数、memo 失效
-  const onSync = useCallback(() => {
-    refetch()
-    onRefreshStats()
-  }, [refetch, onRefreshStats])
-
-  return (
-    <PanelBody>
-      <ListHeader
-        search={search}
-        onSearch={onSearch}
-        assignee={assignee}
-        onAssigneeChange={onAssigneeChange}
-        sort={sort}
-        onSortChange={onSortChange}
-        allCount={allCount ?? total}
-        unassignedCount={unassignedCount}
-        mineCount={mineCount}
-        syncing={isFetching}
-        onSync={onSync}
-        onToggleCollapse={onToggleCollapse}
-        tabsViewportRef={tabsViewportRef}
-      />
-
-      <ScrollArea viewportRef={viewportRef} className="min-h-0 flex-1">
-        {isPending ? (
-          <div className="flex items-center gap-2 p-3 text-sm text-muted-foreground">
-            <Loader2 className="size-4 animate-spin" /> {t('common.loading')}
-          </div>
-        ) : isError ? (
-          <div className="p-3 text-sm text-destructive">{t('common.loadFailed')}</div>
-        ) : total === 0 ? (
-          <div className="p-3 text-sm text-muted-foreground">{t('projectNav.noMatchingProjects')}</div>
-        ) : (
-          // 撑满整份 total 的高度 —— 滚动条据此忠实反映"在 N 条里的第几条"。
-          // 位移只写在外层一个节点上(TanStack Virtual 官方推荐):原先每行各写一个
-          // transform,滚动时每帧 20 次样式写入 + 20 次 diff;现在每帧 1 次。
-          // 行在常规流里靠定高 + margin 排布,步长与虚拟化器的 gap 配置一致。
-          <div className="px-2" style={{ height: virtualizer.getTotalSize() }}>
-            <div style={{ transform: `translateY(${virtualItems[0]?.start ?? 0}px)` }}>
-            {virtualItems.map((row) => {
-              const project = itemAt(row.index)
-              return (
-                <div
-                  key={row.key}
-                  data-index={row.index}
-                  style={{ height: ROW_HEIGHT, marginBottom: ROW_GAP }}
-                >
-                  {project ? (
-                    <ProjectCard
-                      project={project as ProjectSummary}
-                      active={selectedId === project.id}
-                      busy={statusChangingId === project.id}
-                      onOpen={onSelect}
-                      onChangeStatus={onChangeStatus}
-                    />
-                  ) : (
-                    // tombstone:该行所在页还在路上。占住估算高度,避免滚动条抽搐
-                    <div
-                      className="animate-pulse rounded-lg border bg-card/40"
-                      style={{ height: ROW_HEIGHT }}
-                    />
-                  )}
-                </div>
-              )
-            })}
-            </div>
-          </div>
-        )}
-      </ScrollArea>
-    </PanelBody>
   )
 }
 
