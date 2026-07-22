@@ -26,16 +26,19 @@ import {
   User,
 } from 'lucide-react'
 
-import type { BffProject, BffProjectDetail, BffProjectMetaRequest, BffProjectOptions } from '@/generated/api-types'
+import type { BffProject, BffProjectDetail } from '@/generated/api-types'
 // 类型引用,verbatimModuleSyntax 下会被完全擦除 → 与路由不构成运行时循环依赖
 import type { ProjectSearch } from '@/routes/index'
 import type { Anchor, Panel, ProjectSummary } from '@/components/project-nav/types'
+import type { MetaDraft } from '@/components/project-nav/detail/meta-draft'
 import { ASSIGNEE_FILTERS, ROW_GAP, ROW_HEIGHT, SORT_OPTIONS } from '@/components/project-nav/constants'
 import { CollapseToggle, Layer, PanelBody, Rail, Section } from '@/components/project-nav/shell'
 import { Field, Group, Metric, Row } from '@/components/project-nav/fields'
 import { ProjectStatusMenu } from '@/components/project-nav/status-menu'
 import { VisibilityMenu } from '@/components/project-nav/detail/visibility-menu'
 import { AnalyticsPanel, PUBLISHED_STATUSES } from '@/components/project-nav/detail/analytics-panel'
+import { detailToDraft, draftToMeta } from '@/components/project-nav/detail/meta-draft'
+import { MetaForm } from '@/components/project-nav/detail/meta-form'
 
 import {
   PROJECTS_PAGE_SIZE,
@@ -70,8 +73,6 @@ import { Separator } from '@/components/ui/separator'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { SearchInput } from '@/components/form/search-input'
-import { Input } from '@/components/ui/input'
-import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select'
 import { editorProjectRef } from '@/editor-app'
 import type { ListingMeta } from '@/lib/video-overlays'
 import { refreshBannerText } from '@/lib/video-overlays-store'
@@ -759,172 +760,6 @@ function AssetGrid({ projectId, assets }: { projectId: string; assets: NonNullab
         onTagsChange={(assetId, tags) => saveTags.mutate({ projectId, assetId, tags })}
       />
     </>
-  )
-}
-
-const num = (v: string) => (v.trim() === '' ? null : Number(v))
-
-// 编辑表单草稿(全字符串,贴合 <input>)。状态提在 DetailContent:乐观保存会立刻关表单,
-// 失败要原样重开 —— 草稿若留在 MetaForm 内部,一卸载就没了。detail↔draft↔meta 两个纯转换。
-type MetaDraft = {
-  listingUrl: string
-  address: string
-  address2: string
-  city: string
-  state: string
-  postalCode: string
-  propertyType: string
-  price: string
-  videoStyle: string
-  bedrooms: string
-  bathrooms: string
-  livingAreaSqft: string
-  agencyId: string
-  agentId: string
-  assigneeId: string
-}
-
-const detailToDraft = (d: BffProjectDetail): MetaDraft => ({
-  listingUrl: d.listingUrl ?? '',
-  address: d.address ?? '',
-  address2: d.address2 ?? '',
-  city: d.city ?? '',
-  state: d.state ?? '',
-  postalCode: d.postalCode ?? '',
-  propertyType: d.propertyType ?? '',
-  price: d.price?.toString() ?? '',
-  videoStyle: d.videoStyle ?? '',
-  bedrooms: d.bedrooms?.toString() ?? '',
-  bathrooms: d.bathrooms?.toString() ?? '',
-  livingAreaSqft: d.livingAreaSqft?.toString() ?? '',
-  agencyId: d.agencyId ?? '',
-  agentId: d.agentId ?? '',
-  assigneeId: d.assigneeId ?? '',
-})
-
-const draftToMeta = (v: MetaDraft): BffProjectMetaRequest => ({
-  listingUrl: v.listingUrl.trim(),
-  address: v.address.trim(),
-  address2: v.address2.trim(),
-  city: v.city.trim(),
-  state: v.state.trim(),
-  postalCode: v.postalCode.trim(),
-  propertyType: v.propertyType.trim(),
-  videoStyle: v.videoStyle.trim(),
-  price: Number(v.price) || 0,
-  bedrooms: num(v.bedrooms),
-  bathrooms: num(v.bathrooms),
-  livingAreaSqft: num(v.livingAreaSqft),
-  agencyId: v.agencyId || null,
-  agentId: v.agentId || null,
-  assigneeId: v.assigneeId || null,
-})
-
-// 编辑表单:1:1 对齐 xchangeai-workbench 的 ProjectMetaPanel(字段、顺序、行分组、下拉、
-// Cancel/Save details)。下游是 PUT 整体替换,所以表单持有全量值一起提交。
-function MetaForm({
-  value: v,
-  onChange,
-  options,
-  optionsLoading,
-  onCancel,
-  onSave,
-}: {
-  value: MetaDraft
-  onChange: (v: MetaDraft) => void
-  options: BffProjectOptions | undefined
-  optionsLoading: boolean
-  onCancel: () => void
-  onSave: () => void
-}) {
-  const set = (k: keyof MetaDraft) => (e: { target: { value: string } }) =>
-    onChange({ ...v, [k]: e.target.value })
-
-  const selects = [
-    { key: 'agencyId', label: 'Agency', empty: 'No agency', items: options?.agencies },
-    { key: 'agentId', label: 'Agent', empty: 'No agent', items: options?.agents },
-    { key: 'assigneeId', label: 'Assigned creator', empty: 'Unassigned', items: options?.assignees },
-  ] as const
-
-  return (
-    <form
-      className="flex flex-col gap-3"
-      onSubmit={(e) => {
-        e.preventDefault()
-        onSave()
-      }}
-    >
-      <Row label="Listing URL">
-        <Input type="url" className="h-8" value={v.listingUrl} onChange={set('listingUrl')} />
-      </Row>
-      <Row label="Address">
-        <Input className="h-8" value={v.address} onChange={set('address')} />
-      </Row>
-      <Row label="Address line 2">
-        <Input className="h-8" value={v.address2} onChange={set('address2')} />
-      </Row>
-      <div className="grid grid-cols-2 gap-2">
-        <Row label="City">
-          <Input className="h-8" value={v.city} onChange={set('city')} />
-        </Row>
-        <Row label="State">
-          <Input className="h-8" value={v.state} onChange={set('state')} />
-        </Row>
-      </div>
-      <div className="grid grid-cols-2 gap-2">
-        <Row label="Postal code">
-          <Input className="h-8" value={v.postalCode} onChange={set('postalCode')} />
-        </Row>
-        <Row label="Property type">
-          <Input className="h-8" value={v.propertyType} onChange={set('propertyType')} />
-        </Row>
-      </div>
-      <div className="grid grid-cols-2 gap-2">
-        <Row label="List price">
-          <Input type="number" min="0" className="h-8" value={v.price} onChange={set('price')} />
-        </Row>
-        <Row label="Video style">
-          <Input className="h-8" value={v.videoStyle} onChange={set('videoStyle')} />
-        </Row>
-      </div>
-      <div className="grid grid-cols-3 gap-2">
-        <Row label="Beds">
-          <Input type="number" min="0" step="any" className="h-8" value={v.bedrooms} onChange={set('bedrooms')} />
-        </Row>
-        <Row label="Baths">
-          <Input type="number" min="0" step="any" className="h-8" value={v.bathrooms} onChange={set('bathrooms')} />
-        </Row>
-        <Row label="Sqft">
-          <Input
-            type="number"
-            min="0"
-            className="h-8"
-            value={v.livingAreaSqft}
-            onChange={set('livingAreaSqft')}
-          />
-        </Row>
-      </div>
-      {selects.map((s) => (
-        <Row key={s.key} label={s.label}>
-          <NativeSelect className="h-8" disabled={optionsLoading} value={v[s.key]} onChange={set(s.key)}>
-            <NativeSelectOption value="">{optionsLoading ? 'Loading…' : s.empty}</NativeSelectOption>
-            {(s.items ?? []).map((o) => (
-              <NativeSelectOption key={o.id} value={o.id}>
-                {o.name}
-              </NativeSelectOption>
-            ))}
-          </NativeSelect>
-        </Row>
-      ))}
-      <div className="flex justify-end gap-2 pt-1">
-        <Button type="button" variant="ghost" size="sm" className="h-8" onClick={onCancel}>
-          Cancel
-        </Button>
-        <Button type="submit" size="sm" className="h-8">
-          Save details
-        </Button>
-      </div>
-    </form>
   )
 }
 
