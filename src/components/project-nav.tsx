@@ -63,6 +63,7 @@ import { cn } from '@/lib/utils'
 import { useScrollFade } from '@/lib/use-scroll-fade'
 import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
+import { MediaCard, Thumb, duration } from '@/components/media-card'
 import { Separator } from '@/components/ui/separator'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
@@ -178,11 +179,6 @@ const STATUS_ACTIONS: Record<string, StatusAction[]> = {
 }
 
 const statusLabel = (status: string) => status.replaceAll('_', ' ')
-
-const duration = (seconds: number) => {
-  const s = Math.max(0, seconds || 0)
-  return `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(Math.round(s % 60)).padStart(2, '0')}`
-}
 
 // 相对时间(date-fns),如 "5 minutes ago" / "2 days ago"
 const relTime = (iso: string) => {
@@ -969,34 +965,6 @@ function VisibilityMenu({
 }
 
 // 缩略图(列表卡片 + 详情共用)。视频资产无图片海报 → 用 <video> 首帧(#t=0.1 避开黑帧)。
-function Thumb({ url, kind, className }: { url: string | null; kind: string | null; className?: string }) {
-  return (
-    <span
-      className={cn(
-        'flex shrink-0 items-center justify-center overflow-hidden rounded-md bg-muted text-muted-foreground',
-        className,
-      )}
-    >
-      {url ? (
-        kind === 'video' ? (
-          <video src={`${url}#t=0.1`} muted playsInline preload="metadata" className="size-full object-cover" />
-        ) : (
-          <img
-            src={url}
-            alt=""
-            loading="lazy"
-            className="size-full object-cover"
-            onError={(event) => {
-              event.currentTarget.style.display = 'none'
-            }}
-          />
-        )
-      ) : (
-        <ImageIcon className="size-5" />
-      )}
-    </span>
-  )
-}
 
 // memo:滚动时虚拟化器每帧都产出新数组,不 memo 的话这 20 张卡片(连同里面的
 // <video preload="metadata">)每帧全部重新协调 —— 这是滚动卡顿的最后一块。
@@ -1015,48 +983,39 @@ const ProjectCard = memo(function ProjectCard({
   onChangeStatus: (id: string, action: string) => void
 }) {
   return (
-    <div
-      className={cn(
-        'overflow-hidden rounded-lg border bg-card transition-colors',
-        active ? 'border-primary ring-1 ring-primary/40' : 'hover:border-ring/40',
-      )}
+    <MediaCard
+      active={active}
+      onOpen={() => onOpen(project.id)}
+      title={project.title}
+      titleAttr={project.title}
+      thumbnail={<Thumb url={project.thumbnailUrl} kind={project.thumbnailKind} className="size-14" />}
+      footer={
+        <>
+          <ProjectStatusMenu status={project.status} busy={busy} onAction={(action) => onChangeStatus(project.id, action)} />
+          <span className="text-xs text-muted-foreground">{relTime(project.updatedAt)}</span>
+        </>
+      }
     >
-      <button type="button" onClick={() => onOpen(project.id)} className="flex w-full gap-3 p-2.5 text-left">
-        <Thumb url={project.thumbnailUrl} kind={project.thumbnailKind} className="size-14" />
-        <span className="flex min-w-0 flex-1 flex-col gap-1">
-          <span className="truncate text-sm font-semibold" title={project.title}>
-            {project.title}
-          </span>
-          <span className="flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-muted-foreground">
-            <span className="inline-flex min-w-0 items-center gap-1">
-              <User className="size-3 shrink-0" /> <span className="truncate">{project.assignee || 'Unassigned'}</span>
-            </span>
-            <span className="inline-flex min-w-0 items-center gap-1">
-              <Building2 className="size-3 shrink-0" /> <span className="truncate">{project.agency || 'No agency'}</span>
-            </span>
-          </span>
-          <span className="flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-muted-foreground">
-            <span className="inline-flex items-center gap-1">
-              <ImageIcon className="size-3" /> {project.resourceCount} resources
-            </span>
-            <span className="inline-flex items-center gap-1">
-              <Clapperboard className="size-3" /> {project.clipCount} clips
-            </span>
-            <span className="inline-flex items-center gap-1">
-              <Clock className="size-3" /> {duration(project.durationSeconds)}
-            </span>
-          </span>
+      <span className="flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-muted-foreground">
+        <span className="inline-flex min-w-0 items-center gap-1">
+          <User className="size-3 shrink-0" /> <span className="truncate">{project.assignee || 'Unassigned'}</span>
         </span>
-      </button>
-      <div className="flex items-center justify-between gap-2 border-t px-2.5 py-1.5">
-        <ProjectStatusMenu
-          status={project.status}
-          busy={busy}
-          onAction={(action) => onChangeStatus(project.id, action)}
-        />
-        <span className="text-xs text-muted-foreground">{relTime(project.updatedAt)}</span>
-      </div>
-    </div>
+        <span className="inline-flex min-w-0 items-center gap-1">
+          <Building2 className="size-3 shrink-0" /> <span className="truncate">{project.agency || 'No agency'}</span>
+        </span>
+      </span>
+      <span className="flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-muted-foreground">
+        <span className="inline-flex items-center gap-1">
+          <ImageIcon className="size-3" /> {project.resourceCount} resources
+        </span>
+        <span className="inline-flex items-center gap-1">
+          <Clapperboard className="size-3" /> {project.clipCount} clips
+        </span>
+        <span className="inline-flex items-center gap-1">
+          <Clock className="size-3" /> {duration(project.durationSeconds)}
+        </span>
+      </span>
+    </MediaCard>
   )
 })
 
