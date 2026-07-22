@@ -1,8 +1,19 @@
-import type { CoverItem, EditorStarterItem, LowerThirdItem, OverlayScale, UndoableState } from '@gedatou/shared'
-import { LOWER_THIRD_DESIGN, LT_REF_ASPECT, OVERLAY_SCALE_FACTORS, createCoverItem, createLowerThirdItem, createTrack } from '@gedatou/shared'
+import type { CustomItem, EditorStarterItem, UndoableState } from '@gedatou/shared'
+import { createCustomItem, createTrack } from '@gedatou/shared'
+import {
+  COVER_KIND,
+  LOWER_THIRD_DESIGN,
+  LOWER_THIRD_KIND,
+  LT_REF_ASPECT,
+  OVERLAY_SCALE_FACTORS,
+  type CoverData,
+  type LowerThirdData,
+  type LowerThirdPosition,
+  type OverlayScale,
+} from '../overlays/overlay-design'
 
 // 方案:每个叠加 = 时间线上「一个块」。
-//  - 横幅 / 封面:用库的专用 item 类型(lowerThird / cover),几何与多元素渲染在库渲染器(单一真相)。
+//  - 横幅 / 封面:库的 custom item 扩展点 + v2 注册的渲染器(overlays/,业务版式不进库),data 即真相。
 //  - 水印:复用内置 image item(角落定位 + 不透明度),logo 走平台上传(/bff/uploads → /bff/content/<id>)入库。
 // item 即真相:开关/位置/配色/logo 从这些保留 id 的 item 反推(readOverlayConfig)。纯 (state)->state,
 // 不碰 editorStore(便于 node 单测);派发进单例 + logo 上传的薄封装在 video-overlays-store.ts。
@@ -16,9 +27,11 @@ const MANAGED = new Set([LT_ID, CV_ID, EC_ID, WM_ID])
 // 片头封面开关时,除这些外的块整体让位:片头封面钉在 [0,D)、水印钉在 [0,总长) —— 都不随内容平移。
 const SHIFT_PINNED = new Set([CV_ID, WM_ID])
 
+const isKind = (it: EditorStarterItem | undefined, kind: string): it is CustomItem => it?.type === 'custom' && it.kind === kind
+
 const COVER_SECONDS = 3
 
-export type BannerPosition = LowerThirdItem['position'] // 'top' | 'middle' | 'bottom'
+export type BannerPosition = LowerThirdPosition
 export type { OverlayScale }
 export type BannerConfig = { on: boolean; position: BannerPosition; scale: OverlayScale; bgColor: string; textColor: string; opacity: number }
 
@@ -173,20 +186,8 @@ export function applyBanner(s: UndoableState, meta: ListingMeta, patch: Partial<
     const price = usd(meta.price)
     const details = detailsLine(meta)
     const box = bannerBox({ w: s.compositionWidth, h: s.compositionHeight }, cfg.position, cfg.scale, { address, price, details })
-    const it = createLowerThirdItem({
-      trackId: OVERLAY_TRACK,
-      from: span.from,
-      width: box.width,
-      height: box.height,
-      position: cfg.position,
-      scale: cfg.scale,
-      bgColor: cfg.bgColor,
-      bgOpacity: cfg.opacity,
-      textColor: cfg.textColor,
-      address,
-      price,
-      details,
-    })
+    const data: LowerThirdData = { position: cfg.position, scale: cfg.scale, bgColor: cfg.bgColor, bgOpacity: cfg.opacity, textColor: cfg.textColor, address, price, details }
+    const it = createCustomItem({ trackId: OVERLAY_TRACK, from: span.from, width: box.width, height: box.height, kind: LOWER_THIRD_KIND, label: price || 'Lower third', data })
     it.id = LT_ID
     it.left = box.left
     it.top = box.top
@@ -209,7 +210,8 @@ export function applyCover(s: UndoableState, meta: ListingMeta, on: boolean): Un
     shiftExcept(items, SHIFT_PINNED, (on ? D : 0) - (was ? D : 0))
     delete items[CV_ID]
     if (on) {
-      const it = createCoverItem({ trackId: OVERLAY_TRACK, from: 0, width: s.compositionWidth, height: s.compositionHeight, scale: readCoverScale(items), bgColor: '#151515', eyebrow: 'FOR SALE', title: coverTitle(meta), price: usd(meta.price), subtitle: detailsLine(meta) })
+      const data: CoverData = { scale: readCoverScale(items), bgColor: '#151515', eyebrow: 'FOR SALE', title: coverTitle(meta), price: usd(meta.price), subtitle: detailsLine(meta) }
+      const it = createCustomItem({ trackId: OVERLAY_TRACK, from: 0, width: s.compositionWidth, height: s.compositionHeight, kind: COVER_KIND, label: data.title || 'Cover', data })
       it.id = CV_ID
       it.durationInFrames = D
       items[CV_ID] = it
@@ -230,7 +232,8 @@ export function applyEndCover(s: UndoableState, meta: ListingMeta, on: boolean):
         const it = items[id]
         end = Math.max(end, it.from + it.durationInFrames)
       }
-      const it = createCoverItem({ trackId: OVERLAY_TRACK, from: end, width: s.compositionWidth, height: s.compositionHeight, scale: readCoverScale(items), bgColor: '#151515', eyebrow: 'THANK YOU', title: coverTitle(meta), price: '', subtitle: [usd(meta.price), meta.address].filter(Boolean).join(' · ') })
+      const data: CoverData = { scale: readCoverScale(items), bgColor: '#151515', eyebrow: 'THANK YOU', title: coverTitle(meta), price: '', subtitle: [usd(meta.price), meta.address].filter(Boolean).join(' · ') }
+      const it = createCustomItem({ trackId: OVERLAY_TRACK, from: end, width: s.compositionWidth, height: s.compositionHeight, kind: COVER_KIND, label: data.title || 'Cover', data })
       it.id = EC_ID
       it.durationInFrames = D
       items[EC_ID] = it
@@ -295,15 +298,16 @@ export function applyWatermark(s: UndoableState, patch: WatermarkPatch): Undoabl
 // ---- 读回:item 即真相 ----
 
 function readBanner(items: Record<string, EditorStarterItem>): BannerConfig {
-  const lt = items[LT_ID] as LowerThirdItem | undefined
-  if (!lt) return { ...DEFAULT_BANNER }
-  return { on: true, position: lt.position, scale: lt.scale, bgColor: lt.bgColor, textColor: lt.textColor, opacity: lt.bgOpacity }
+  const lt = items[LT_ID]
+  if (!isKind(lt, LOWER_THIRD_KIND)) return { ...DEFAULT_BANNER }
+  const d = lt.data as LowerThirdData
+  return { on: true, position: d.position, scale: d.scale, bgColor: d.bgColor, textColor: d.textColor, opacity: d.bgOpacity }
 }
 
 // 封面尺寸档:两张封面共用一档,从现有封面 item 读回(默认 medium)
 function readCoverScale(items: Record<string, EditorStarterItem>): OverlayScale {
-  const cv = (items[CV_ID] ?? items[EC_ID]) as CoverItem | undefined
-  return cv?.scale ?? 'medium'
+  const cv = [items[CV_ID], items[EC_ID]].find((it): it is CustomItem => isKind(it, COVER_KIND))
+  return cv ? (cv.data as CoverData).scale : 'medium'
 }
 
 /** 只改档位:给已存在的两张封面 item 打上新 scale(渲染器读它放大字号,几何无需重算) */
@@ -311,7 +315,7 @@ export function applyCoverScale(s: UndoableState, scale: OverlayScale): Undoable
   return withOverlay(s, (items) => {
     for (const id of [CV_ID, EC_ID]) {
       const it = items[id]
-      if (it && it.type === 'cover') items[id] = { ...it, scale }
+      if (isKind(it, COVER_KIND)) items[id] = { ...it, data: { ...it.data, scale } }
     }
   })
 }
@@ -346,6 +350,26 @@ export function readOverlayConfig(s: UndoableState): OverlayConfig {
     coverScale: readCoverScale(s.items),
     watermark: readWatermark(s),
   }
+}
+
+// ---- 旧数据迁移:早期库版本把叠加存成专用 type('lowerThird'/'cover'),现为 custom+kind ----
+
+const BASE_KEYS = new Set(['id', 'type', 'trackId', 'from', 'durationInFrames', 'left', 'top', 'width', 'height', 'rotation', 'opacity', 'borderRadius', 'fadeInDurationInFrames', 'fadeOutDurationInFrames'])
+
+/** 项目加载时调用:把旧格式叠加 item 一次性映射为 custom item(业务字段收进 data),其余原样返回 */
+export function migrateLegacyOverlays(s: UndoableState): UndoableState {
+  let changed = false
+  const items = { ...s.items }
+  for (const id of Object.keys(items)) {
+    const legacy = items[id] as unknown as Record<string, unknown>
+    if (legacy.type !== 'lowerThird' && legacy.type !== 'cover') continue
+    const base: Record<string, unknown> = {}
+    const data: Record<string, unknown> = {}
+    for (const k of Object.keys(legacy)) (BASE_KEYS.has(k) ? base : data)[k] = legacy[k]
+    items[id] = { ...base, type: 'custom', kind: legacy.type, label: String(data.price || data.title || legacy.type), data } as unknown as EditorStarterItem
+    changed = true
+  }
+  return changed ? { ...s, items } : s
 }
 
 // eslint 友好:导出角落顺序供 UI 复用

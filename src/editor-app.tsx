@@ -18,6 +18,8 @@ import {
   useEditor,
 } from '@gedatou/editor'
 import { createHttpTransport, createBrowserStorage } from '@gedatou/editor/adapters'
+import '@/overlays/register' // 注册业务 custom item 渲染器(预览端;渲染端见 render-entry.tsx)
+import { migrateLegacyOverlays } from '@/lib/video-overlays'
 import { Button } from '@/components/ui/button'
 import { useDeliverProject, useProject, usePublishProject, useSaveProject } from '@/api/projects/projects'
 import { sonnerNotify } from '@/notify'
@@ -134,16 +136,17 @@ export function EditorApp() {
   // 切项目:该工程时间轴首次到达时把编辑器 store 重置为它(沿用库自身 loadStateFromFile 的重置约定)。
   // loadedIdRef 守护 —— 保存后 detail 失效重拉(同一 id)不再二次重置,避免清空 undo 历史/选择。
   const loadedIdRef = useRef<string | null>(null)
-  const state = detail.data?.state as unknown as UndoableState | undefined
+  const rawState = detail.data?.state as unknown as UndoableState | undefined
   useEffect(() => {
-    if (!state || loadedIdRef.current === id) return
+    if (!rawState || loadedIdRef.current === id) return
     loadedIdRef.current = id ?? null
     editorProjectRef.id = id ?? null // 时间轴到位 → 允许侧栏叠加控件写这个项目
+    const state = migrateLegacyOverlays(rawState) // 旧格式叠加 item → custom item(下次保存即固化)
     // renderingTasks 也清:换项目后旧渲染产物不应被误交付到新项目
     editorStore.setState({ undoable: state, lastSavedState: state, past: [], future: [], selectedItemIds: [], renderingTasks: [] })
     void restoreLocalUrls(editorStore, baseDeps, state)
     // ponytail: 直接重置会丢弃未保存改动(gotcha #5,脏检查/切换确认待产品拍板后单独接)
-  }, [id, state])
+  }, [id, rawState])
 
   // compound 拼装:替代 <EditorRoot>。删掉 demo 专用的下载/导入状态按钮(平台持久化到 BFF,
   // 本地 JSON 存取无意义),发布/交付作为宿主自定义按钮放进工具栏右侧。

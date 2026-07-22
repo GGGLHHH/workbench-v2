@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
-import { type LowerThirdItem, createEmptyState, type UndoableState } from '@gedatou/shared'
+import { type CustomItem, createEmptyState, type UndoableState } from '@gedatou/shared'
 
-import { applyBanner, applyCover, applyCoverScale, applyEndCover, applyWatermark, detailsLine, readOverlayConfig, type ListingMeta, type WatermarkLogo } from './video-overlays'
+import { applyBanner, applyCover, applyCoverScale, applyEndCover, applyWatermark, detailsLine, migrateLegacyOverlays, readOverlayConfig, type ListingMeta, type WatermarkLogo } from './video-overlays'
 
 const LOGO: WatermarkLogo = { contentId: 'c1', url: '/bff/content/c1', width: 200, height: 100 }
 const assetId = (it: unknown) => (it as { assetId: string }).assetId
@@ -48,18 +48,19 @@ function seed(): UndoableState {
 const managedIds = (s: UndoableState) => Object.keys(s.items).filter((id) => id.startsWith('__'))
 
 describe('每个叠加 = 时间线上一个块', () => {
-  it('横幅只产生一个 lowerThird item;封面/片尾各一个 cover item', () => {
+  it('横幅只产生一个 lowerThird custom item;封面/片尾各一个 cover custom item', () => {
     let s = applyBanner(seed(), META, { on: true })
     expect(managedIds(s)).toEqual(['__lowerthird'])
-    expect(s.items.__lowerthird.type).toBe('lowerThird')
+    expect(s.items.__lowerthird.type).toBe('custom')
+    expect((s.items.__lowerthird as CustomItem).kind).toBe('lowerThird')
 
     s = applyCover(s, META, true)
     s = applyEndCover(s, META, true)
     s = applyWatermark(s, { on: true, logo: LOGO })
     // 四个叠加 = 恰好四个块(不再是十几个重叠块)
     expect(managedIds(s).sort()).toEqual(['__cover', '__endcover', '__lowerthird', '__watermark'])
-    expect(s.items.__cover.type).toBe('cover')
-    expect(s.items.__endcover.type).toBe('cover')
+    expect((s.items.__cover as CustomItem).kind).toBe('cover')
+    expect((s.items.__endcover as CustomItem).kind).toBe('cover')
     expect(s.items.__watermark.type).toBe('image')
   })
 })
@@ -107,7 +108,7 @@ describe('横幅:配置往返 + 左锚定卡矩形(几何对齐 LOWER_THIRD_DESI
   })
 
   it('文案从元数据烘焙(地址/价格/明细)', () => {
-    const lt = applyBanner(seed(), META, { on: true }).items.__lowerthird as LowerThirdItem
+    const lt = (applyBanner(seed(), META, { on: true }).items.__lowerthird as CustomItem).data as { price: string; address: string; details: string }
     expect(lt.price).toBe('$1,250,000')
     expect(lt.address).toContain('12 Maple St')
     expect(lt.details).toBe(detailsLine(META))
@@ -156,12 +157,12 @@ describe('尺寸档 S/M/L', () => {
     s = applyCoverScale(s, 'large')
     expect(readOverlayConfig(s).coverScale).toBe('large')
     // 两张都改了
-    expect((s.items.__cover as { scale: string }).scale).toBe('large')
-    expect((s.items.__endcover as { scale: string }).scale).toBe('large')
+    expect(((s.items.__cover as CustomItem).data as { scale: string }).scale).toBe('large')
+    expect(((s.items.__endcover as CustomItem).data as { scale: string }).scale).toBe('large')
     // 关掉再开,继承当前 large
     s = applyCover(s, META, false)
     s = applyCover(s, META, true)
-    expect((s.items.__cover as { scale: string }).scale).toBe('large')
+    expect(((s.items.__cover as CustomItem).data as { scale: string }).scale).toBe('large')
   })
 })
 
@@ -199,5 +200,26 @@ describe('封面 = 真正的首/尾块,时间不重叠', () => {
     const c = s.items.__cover, clip = s.items.clip1, e = s.items.__endcover
     expect(c.from + c.durationInFrames).toBeLessThanOrEqual(clip.from)
     expect(clip.from + clip.durationInFrames).toBeLessThanOrEqual(e.from)
+  })
+})
+
+describe('旧格式迁移(库专用 type → custom+kind)', () => {
+  it('lowerThird/cover 旧 item 摊回去再迁移,配置读回一致;新格式原引用返回', () => {
+    let s = applyCover(seed(), META, true)
+    s = applyBanner(s, META, { on: true, position: 'top' })
+    // 手工造旧格式:把 custom item 的 data 摊回顶层、type 换回旧专用名
+    const legacyItems = Object.fromEntries(
+      Object.entries(s.items).map(([id, it]) => {
+        if (it.type !== 'custom') return [id, it]
+        const { kind, label: _label, data, ...base } = it
+        return [id, { ...base, ...data, type: kind }]
+      }),
+    )
+    const legacy = { ...s, items: legacyItems } as unknown as UndoableState
+    const migrated = migrateLegacyOverlays(legacy)
+    expect(migrated.items.__cover.type).toBe('custom')
+    expect((migrated.items.__cover as CustomItem).kind).toBe('cover')
+    expect(readOverlayConfig(migrated).banner).toMatchObject({ on: true, position: 'top' })
+    expect(migrateLegacyOverlays(migrated)).toBe(migrated)
   })
 })

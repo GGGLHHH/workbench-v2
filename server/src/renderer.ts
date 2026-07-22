@@ -1,4 +1,4 @@
-import { createRequire } from 'node:module';
+import { fileURLToPath } from 'node:url';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import fs from 'node:fs/promises';
@@ -7,10 +7,9 @@ import { ensureBrowser, renderMedia, selectComposition } from '@remotion/rendere
 import { newId, sanitizeFileName, type UndoableState } from '@gedatou/shared';
 import { writeBuffer } from './storage';
 
-// 渲染入口：@gedatou/shared 的 Remotion composition（registerRoot，id="Main"）。
-// 经 pnpm link: 消费源码，解析其 '.' 导出（src/index.ts）再定位同级 composition/entry.tsx。
-const require = createRequire(import.meta.url);
-const ENTRY = path.join(path.dirname(require.resolve('@gedatou/shared')), 'composition/entry.tsx');
+// 渲染入口：v2 自己的 render-entry.tsx（先注册业务 custom item 渲染器，再 registerRoot 库的
+// CompositionRoot，id="Main"）——bundle 库内 entry 会缺 lowerThird/cover 渲染器。
+const ENTRY = fileURLToPath(new URL('../../src/render-entry.tsx', import.meta.url));
 
 export type RenderTask = {
   status: 'queued' | 'rendering' | 'done' | 'error';
