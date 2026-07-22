@@ -1,6 +1,6 @@
 import { createFileRoute, redirect } from '@tanstack/react-router'
 import { AppShell } from '@/app-shell'
-import { SORT_VALUES } from '@/components/project-nav'
+import { SORT_VALUES } from '@/components/project-nav/constants'
 
 // 侧边栏的「看的是哪个项目 + 哪份筛选」进 URL:可分享、前进后退可用、刷新自然还原。
 // 详情内容本身不存 —— 那是 server state,useProject(id) 会自己拉。
