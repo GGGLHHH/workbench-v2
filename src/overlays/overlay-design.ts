@@ -49,13 +49,15 @@ export const LOWER_THIRD_DESIGN = {
 } as const
 
 // 封面:满幅底 + 居中标题卡。字号取帧高分数(参考 DOM 的 clamp 只是小预览产物,渲染按分数缩放)。
+// 字号对齐 xchangeai-workbench 参考:renderCoverCard 用帧高分数(eyebrow 0.035 / title medium 0.076 /
+// subtitle 0.04),price 取 DOM `.nle-cover-frame strong` 的 clamp 上限(24px/427.5 ≈ 0.053)。
 export const COVER_DESIGN = {
   eyebrowColor: '#9DB6DD',
   subtitleColor: '#C9D7EC',
-  eyebrowSize: 0.022,
-  titleSize: 0.058,
-  priceSize: 0.036,
-  subSize: 0.028,
+  eyebrowSize: 0.035,
+  titleSize: 0.076,
+  priceSize: 0.053,
+  subSize: 0.04,
   gap: 0.018,
 } as const
 
