@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { type CustomItem, createEmptyState, type UndoableState } from '@gedatou/shared'
 
-import { applyBanner, applyCover, applyCoverScale, applyEndCover, applyWatermark, detailsLine, migrateLegacyOverlays, readOverlayConfig, type ListingMeta, type WatermarkLogo } from './video-overlays'
+import { applyBanner, applyCover, applyCoverScale, applyEndCover, applyWatermark, detailsLine, migrateLegacyOverlays, readOverlayConfig, sameOverlay, type ListingMeta, type WatermarkLogo } from './video-overlays'
 
 const LOGO: WatermarkLogo = { contentId: 'c1', url: '/bff/content/c1', width: 200, height: 100 }
 const assetId = (it: unknown) => (it as { assetId: string }).assetId
@@ -200,6 +200,14 @@ describe('封面 = 真正的首/尾块,时间不重叠', () => {
     const c = s.items.__cover, clip = s.items.clip1, e = s.items.__endcover
     expect(c.from + c.durationInFrames).toBeLessThanOrEqual(clip.from)
     expect(clip.from + clip.durationInFrames).toBeLessThanOrEqual(e.from)
+  })
+})
+
+describe('sameOverlay', () => {
+  it('banner.opacity 不同 → false', () => {
+    const base = readOverlayConfig(seed())
+    expect(sameOverlay(base, base)).toBe(true)
+    expect(sameOverlay(base, { ...base, banner: { ...base.banner, opacity: base.banner.opacity + 0.1 } })).toBe(false)
   })
 })
 

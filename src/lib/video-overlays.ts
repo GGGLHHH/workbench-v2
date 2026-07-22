@@ -1,5 +1,6 @@
 import type { CustomItem, EditorStarterItem, UndoableState } from '@gedatou/shared'
 import { createCustomItem, createTrack } from '@gedatou/shared'
+import type { BffProject } from '@/generated/api-types'
 import {
   COVER_KIND,
   LOWER_THIRD_DESIGN,
@@ -374,3 +375,39 @@ export function migrateLegacyOverlays(s: UndoableState): UndoableState {
 
 // eslint 友好:导出角落顺序供 UI 复用
 export { WM_CORNERS }
+
+// ---- app 侧胶水:BffProject → ListingMeta;浅比较两份配置(供订阅去重) ----
+
+export function toMeta(project: BffProject): ListingMeta {
+  const d = project.detail
+  return {
+    name: project.name,
+    price: d?.price ?? null,
+    bedrooms: d?.bedrooms ?? null,
+    bathrooms: d?.bathrooms ?? null,
+    livingAreaSqft: d?.livingAreaSqft ?? null,
+    address: d?.address ?? null,
+    address2: d?.address2 ?? null,
+    city: d?.city ?? null,
+    state: d?.state ?? null,
+    postalCode: d?.postalCode ?? null,
+  }
+}
+
+export function sameOverlay(a: OverlayConfig, b: OverlayConfig): boolean {
+  return (
+    a.cover === b.cover &&
+    a.endCover === b.endCover &&
+    a.banner.on === b.banner.on &&
+    a.banner.position === b.banner.position &&
+    a.banner.scale === b.banner.scale &&
+    a.banner.bgColor === b.banner.bgColor &&
+    a.banner.textColor === b.banner.textColor &&
+    a.banner.opacity === b.banner.opacity &&
+    a.coverScale === b.coverScale &&
+    a.watermark.on === b.watermark.on &&
+    a.watermark.position === b.watermark.position &&
+    a.watermark.opacity === b.watermark.opacity &&
+    a.watermark.logoUrl === b.watermark.logoUrl
+  )
+}
