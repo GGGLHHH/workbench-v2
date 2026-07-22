@@ -54,6 +54,13 @@
     "retry": "Retry",
     "save": "Save"
   },
+  "coverPanel": {
+    "coverTitle": "Title",
+    "eyebrow": "Eyebrow",
+    "heading": "Cover text",
+    "price": "Price",
+    "subtitle": "Subtitle"
+  },
   "editor": {
     "assets": {
       "fileTooLarge": "File too large: {{name}} (max {{max}}MB)",
@@ -246,12 +253,6 @@
   "language": {
     "changeLanguage": "Change language"
   },
-  "theme": {
-    "changeTheme": "Change theme",
-    "light": "Light",
-    "dark": "Dark",
-    "system": "System"
-  },
   "lightbox": {
     "close": "Close",
     "download": "Download",
@@ -321,6 +322,12 @@
     "empty": "No matching tags",
     "loadingMore": "Loading more…",
     "searchPlaceholder": "Search tags…"
+  },
+  "theme": {
+    "changeTheme": "Change theme",
+    "light": "Light",
+    "dark": "Dark",
+    "system": "System"
   },
   "videoSettings": {
     "banner": "Price & details banner",

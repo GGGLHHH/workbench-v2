@@ -22,6 +22,8 @@ import '@/overlays/register' // 注册业务 custom item 渲染器(预览端;渲
 import { migrateLegacyOverlays } from '@/lib/video-overlays'
 import { buildDownloadName } from '@/lib/download-name'
 import { CanvasPresetsPanel } from '@/components/canvas-presets-panel'
+import { CoverInspectorPanel } from '@/components/overlay-inspector-panels'
+import { COVER_KIND } from '@/overlays/overlay-design'
 import { Button } from '@/components/ui/button'
 import { useDeliverProject, useProject, usePublishProject, useSaveProject } from '@/api/projects/projects'
 import { sonnerNotify } from '@/notify'
@@ -127,6 +129,8 @@ export function EditorApp() {
       },
       // 下载名策略在消费方:项目名 + 导出时刻(库只透传给渲染服务清洗后挂头)
       exportFileName: (codec: string) => buildDownloadName(codec, projectName, new Date()),
+      // 封面块的检查器领域面板(时间轴选中封面 → 可改四行文字)
+      customItemPanels: { [COVER_KIND]: CoverInspectorPanel },
     }),
     [i18n, i18n.language, projectName],
   )

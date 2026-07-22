@@ -54,6 +54,13 @@
     "retry": "重试",
     "save": "保存"
   },
+  "coverPanel": {
+    "coverTitle": "标题",
+    "eyebrow": "眉标",
+    "heading": "封面文字",
+    "price": "价格",
+    "subtitle": "副标题"
+  },
   "editor": {
     "assets": {
       "fileTooLarge": "文件过大：{{name}}（上限 {{max}}MB）",
@@ -246,12 +253,6 @@
   "language": {
     "changeLanguage": "切换语言"
   },
-  "theme": {
-    "changeTheme": "切换主题",
-    "light": "浅色",
-    "dark": "深色",
-    "system": "跟随系统"
-  },
   "lightbox": {
     "close": "关闭",
     "download": "下载",
@@ -321,6 +322,12 @@
     "empty": "无匹配标签",
     "loadingMore": "加载更多…",
     "searchPlaceholder": "搜索标签…"
+  },
+  "theme": {
+    "changeTheme": "切换主题",
+    "light": "浅色",
+    "dark": "深色",
+    "system": "跟随系统"
   },
   "videoSettings": {
     "banner": "价格与信息横幅",
