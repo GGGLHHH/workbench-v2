@@ -306,6 +306,7 @@
     "commentEditFailed": "评论修改失败",
     "commentFailed": "评论失败",
     "assetDeleteFailed": "删除资产失败",
+    "logoUploadFailed": "logo 上传失败",
     "deliverFailed": "交付失败",
     "delivered": "成片已交付到平台",
     "publishFailed": "发布失败",
@@ -320,5 +321,29 @@
     "empty": "无匹配标签",
     "loadingMore": "加载更多…",
     "searchPlaceholder": "搜索标签…"
+  },
+  "videoSettings": {
+    "banner": "价格与信息横幅",
+    "bannerHint": "把价格·户型信息叠加到片头画面上",
+    "bgColor": "背景",
+    "bgOpacity": "背景不透明度",
+    "closingCover": "片尾封面",
+    "coverHint": "在开头/结尾钉一张标题卡(在时间轴上选中它可改文字)",
+    "openEditorHint": "先在右侧编辑器打开本项目,才能编辑视频叠加",
+    "openingCover": "片头封面",
+    "posBottom": "下",
+    "posMiddle": "中",
+    "posTop": "上",
+    "position": "位置",
+    "size": "字号",
+    "scaleS": "小",
+    "scaleM": "中",
+    "scaleL": "大",
+    "opacity": "不透明度",
+    "replaceLogo": "更换 logo",
+    "textColor": "文字",
+    "title": "视频叠加",
+    "watermark": "水印 logo",
+    "watermarkHint": "上传 logo 图片,叠加在画面角落(自动入库)"
   }
 }

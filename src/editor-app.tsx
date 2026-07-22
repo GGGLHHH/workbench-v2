@@ -28,6 +28,10 @@ import { buildDemoState } from '@/demo-state'
 // 选中项目 → 存回 BFF;无选中 → 回落 localStorage(保留接线前的 demo 行为)。
 const projectRef: { save: ((state: UndoableState) => void) | null } = { save: null }
 
+// 当前编辑器已加载哪个项目的时间轴。侧栏视频叠加控件(video-overlays)派发前用它守卫:
+// 编辑器还没把本项目 state 灌进单例时不许写,免得把叠加 item 塞进上个项目/demo 的时间轴。
+export const editorProjectRef: { id: string | null } = { id: null }
+
 const transport = createHttpTransport()
 const browser = createBrowserStorage()
 // 只包 saveProject 一个方法。库里保存(Cmd+S)是显式触发、非自动存,所以接 BFF 不会频繁写库。
@@ -134,6 +138,7 @@ export function EditorApp() {
   useEffect(() => {
     if (!state || loadedIdRef.current === id) return
     loadedIdRef.current = id ?? null
+    editorProjectRef.id = id ?? null // 时间轴到位 → 允许侧栏叠加控件写这个项目
     // renderingTasks 也清:换项目后旧渲染产物不应被误交付到新项目
     editorStore.setState({ undoable: state, lastSavedState: state, past: [], future: [], selectedItemIds: [], renderingTasks: [] })
     void restoreLocalUrls(editorStore, baseDeps, state)

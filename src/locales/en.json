@@ -306,6 +306,7 @@
     "commentEditFailed": "Failed to edit comment",
     "commentFailed": "Failed to post comment",
     "assetDeleteFailed": "Failed to delete asset",
+    "logoUploadFailed": "Logo upload failed",
     "deliverFailed": "Delivery failed",
     "delivered": "Final cut delivered to platform",
     "publishFailed": "Publish failed",
@@ -320,5 +321,29 @@
     "empty": "No matching tags",
     "loadingMore": "Loading more…",
     "searchPlaceholder": "Search tags…"
+  },
+  "videoSettings": {
+    "banner": "Price & details banner",
+    "bannerHint": "Overlays price & details on the video's intro",
+    "bgColor": "Background",
+    "bgOpacity": "Background opacity",
+    "closingCover": "Closing cover",
+    "coverHint": "Pins a title card to the start/end (select it on the timeline to edit text)",
+    "openEditorHint": "Open this project in the editor first to edit video overlays",
+    "openingCover": "Opening cover",
+    "posBottom": "Bottom",
+    "posMiddle": "Middle",
+    "posTop": "Top",
+    "position": "Position",
+    "size": "Size",
+    "scaleS": "S",
+    "scaleM": "M",
+    "scaleL": "L",
+    "opacity": "Opacity",
+    "replaceLogo": "Replace logo",
+    "textColor": "Text",
+    "title": "Video overlays",
+    "watermark": "Watermark logo",
+    "watermarkHint": "Upload a logo image, overlaid in a corner (stored on the platform)"
   }
 }
