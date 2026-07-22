@@ -90,7 +90,6 @@ import {
   type WatermarkPosition,
 } from '@/lib/video-overlays'
 import { refreshBannerText, setBanner, setCover, setCoverScale, setEndCover, setWatermark } from '@/lib/video-overlays-store'
-import { ASPECT_PRESETS, RES_PRESETS, aspectDims, isAspect, scaleToShort } from '@/lib/canvas-presets'
 import { uploadAttachment } from '@/api/projects/projects'
 
 // 手写双层侧边栏(互斥展开):第一层=项目列表(对齐 xchangeai-workbench 卡片:缩略图 +
@@ -1218,72 +1217,6 @@ function ScaleToggle({ value, disabled, onChange }: { value: OverlayScale; disab
   )
 }
 
-// 画布尺寸预设(自 @gedatou/editor Inspector 签出:严格对齐官方后,预设属产品层)。
-// 比例键保留当前短边换比例;分辨率键保留比例缩放短边;派发与叠加同一入口(updateUndoable)。
-function useCanvasSize(): { w: number; h: number } {
-  const [size, setSize] = useState(() => ({
-    w: editorStore.getState().undoable.compositionWidth,
-    h: editorStore.getState().undoable.compositionHeight,
-  }))
-  useEffect(() => {
-    const update = () => {
-      const { compositionWidth: w, compositionHeight: h } = editorStore.getState().undoable
-      setSize((prev) => (prev.w === w && prev.h === h ? prev : { w, h }))
-    }
-    update()
-    return editorStore.subscribe(update)
-  }, [])
-  return size
-}
-
-function CanvasSizeSection({ disabled }: { disabled: boolean }) {
-  const { t } = useTranslation()
-  const { w, h } = useCanvasSize()
-  const setCanvas = (nw: number, nh: number) =>
-    editorStore.getState().updateUndoable((s) => ({ ...s, compositionWidth: nw, compositionHeight: nh }), { commit: true })
-  return (
-    <div className="flex flex-col gap-1.5">
-      <span className="text-xs text-muted-foreground">
-        {t('videoSettings.canvasSize')} <span className="text-foreground tabular-nums">{w}×{h}</span>
-      </span>
-      <div className="flex gap-1">
-        {ASPECT_PRESETS.map(([label, aw, ah]) => (
-          <Button
-            key={label}
-            variant={isAspect(w, h, aw, ah) ? 'default' : 'outline'}
-            size="sm"
-            className="h-7 flex-1 px-1 text-xs tabular-nums"
-            disabled={disabled}
-            onClick={() => {
-              const d = aspectDims(aw, ah, Math.min(w, h))
-              setCanvas(d.w, d.h)
-            }}
-          >
-            {label}
-          </Button>
-        ))}
-      </div>
-      <div className="flex gap-1">
-        {RES_PRESETS.map(([label, short]) => (
-          <Button
-            key={label}
-            variant={Math.min(w, h) === short ? 'default' : 'outline'}
-            size="sm"
-            className="h-7 flex-1 px-1 text-xs tabular-nums"
-            disabled={disabled}
-            onClick={() => {
-              const d = scaleToShort(w, h, short)
-              setCanvas(d.w, d.h)
-            }}
-          >
-            {label}
-          </Button>
-        ))}
-      </div>
-    </div>
-  )
-}
-
 function VideoOverlaysSection({ project }: { project: BffProject }) {
   const { t } = useTranslation()
   const meta = useMemo(() => toMeta(project), [project])
@@ -1324,8 +1257,6 @@ function VideoOverlaysSection({ project }: { project: BffProject }) {
     <section className="flex flex-col gap-2.5">
       <h3 className="text-xs font-medium tracking-wide text-muted-foreground uppercase">{t('videoSettings.title')}</h3>
       {dis ? <p className="text-xs text-muted-foreground">{t('videoSettings.openEditorHint')}</p> : null}
-
-      <CanvasSizeSection disabled={dis} />
 
       <OverlaySwitchRow
         label={t('videoSettings.banner')}

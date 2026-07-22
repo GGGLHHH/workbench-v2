@@ -21,6 +21,7 @@ import { createHttpTransport, createBrowserStorage } from '@gedatou/editor/adapt
 import '@/overlays/register' // 注册业务 custom item 渲染器(预览端;渲染端见 render-entry.tsx)
 import { migrateLegacyOverlays } from '@/lib/video-overlays'
 import { buildDownloadName } from '@/lib/download-name'
+import { CanvasPresetsPanel } from '@/components/canvas-presets-panel'
 import { Button } from '@/components/ui/button'
 import { useDeliverProject, useProject, usePublishProject, useSaveProject } from '@/api/projects/projects'
 import { sonnerNotify } from '@/notify'
@@ -178,7 +179,7 @@ export function EditorApp() {
         <div className="flex min-h-0 flex-1">
           <Canvas />
           <aside className="w-[349px] shrink-0 overflow-y-auto border-l border-border text-sm">
-            <Inspector />
+            <Inspector canvasExtra={<CanvasPresetsPanel />} />
           </aside>
         </div>
         <PlaybackBar />

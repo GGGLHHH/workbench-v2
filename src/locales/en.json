@@ -327,7 +327,6 @@
     "bannerHint": "Overlays price & details on the video's intro",
     "bgColor": "Background",
     "bgOpacity": "Background opacity",
-    "canvasSize": "Canvas size",
     "closingCover": "Closing cover",
     "coverHint": "Pins a title card to the start/end (select it on the timeline to edit text)",
     "opacity": "Opacity",
