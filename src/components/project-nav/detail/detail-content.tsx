@@ -65,9 +65,15 @@ export function DetailContent({ visible }: { visible: boolean }) {
   // 草稿提在这层(见 MetaDraft):乐观保存立刻关表单,失败原样重开都不丢用户输入。
   const [draft, setDraft] = useState<MetaDraft | null>(null)
   // 详情 / 评论 分两个可滑动 Tab:评论接入 comment-pane(自带滚动/虚拟/无限)需独占一块滚动区。
-  // embla 做横向滑动(鼠标拖拽 / 触摸),两 slide 始终挂载 → scroll-fade / 虚拟化器不因切换卸载而失效。
+  // embla 做横向滑动(触摸/笔),两 slide 始终挂载 → scroll-fade / 虚拟化器不因切换卸载而失效。
   const [tab, setTab] = useState<'detail' | 'comments'>('detail')
-  const [emblaRef, emblaApi] = useEmblaCarousel({ align: 'start' })
+  // watchDrag:鼠标拖拽会抢占原生文本选择(想选字变成了滑动)→ 鼠标时不启动拖拽,交还浏览器选择;
+  // 触摸保留滑动。桌面切 Tab 走点击(onValueChange → scrollTo),不受影响。
+  // 注:embla 监听的是 mousedown/touchstart(非 pointer 事件),故按 evt.type 区分鼠标而非 pointerType。
+  const [emblaRef, emblaApi] = useEmblaCarousel({
+    align: 'start',
+    watchDrag: (_emblaApi, evt) => evt.type !== 'mousedown',
+  })
   const options = useProjectOptions(visible && editing)
   const saveMeta = useSaveProjectMeta()
   const saveVisibility = useSaveProjectVisibility()
