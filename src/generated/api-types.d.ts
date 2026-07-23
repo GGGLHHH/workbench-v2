@@ -226,6 +226,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/bff/projects/{id}/assets/{assetId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete: operations["deleteBffProjectAsset"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/bff/tags": {
         parameters: {
             query?: never;
@@ -290,6 +306,118 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/bff/projects/{id}/publish": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["publishBffProject"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/bff/content/{contentId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getBffContent"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/bff/projects/{id}/deliver": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["deliverBffProject"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/bff/clip-providers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["listBffClipProviders"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/bff/clips": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["listBffClips"];
+        put?: never;
+        post: operations["generateBffClip"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/bff/clips/{taskId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getBffClip"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/bff/clips/{clipId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete: operations["deleteBffClip"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -337,7 +465,6 @@ export interface components {
         };
         BffProjectAsset: {
             id: string;
-            /** 手加:BFF 已返回(content_id 稳定引用,删除/加入编辑器用);下次 vg 重生成会自动带上 */
             contentId?: null | string;
             group: string;
             url: string;
@@ -513,6 +640,71 @@ export interface components {
             id: string;
             status: string;
         };
+        BffDurations: {
+            adjustable: boolean;
+            values?: null | number[];
+            min?: null | number;
+            max?: null | number;
+        };
+        BffReferenceSupport: {
+            supported: boolean;
+            max: number;
+        };
+        BffClipProvider: {
+            id: string;
+            label: string;
+            durations: components["schemas"]["BffDurations"];
+            referenceImages: components["schemas"]["BffReferenceSupport"];
+            configured: boolean;
+            configurationIssue?: null | string;
+        };
+        BffClipProviderList: {
+            providers: components["schemas"]["BffClipProvider"][];
+        };
+        BffGenerateClipRequest: {
+            imageUrl: string;
+            projectId?: string;
+            provider?: string;
+            durationSeconds?: number;
+            aspectRatio?: string;
+            promptBody?: string;
+            cameraMove?: string;
+            focusSubject?: string;
+            lightTransition?: string;
+            referenceImageUrls?: string[];
+        };
+        BffClipTask: {
+            taskId: string;
+            status: string;
+            progress: number;
+            url?: null | string;
+            provider?: null | string;
+            durationSeconds?: null | number;
+            error?: null | string;
+        };
+        BffClipRecord: {
+            clipId: string;
+            sourceImageRef: string;
+            referenceImageRefs?: string[];
+            url: string;
+            provider: string;
+            model?: null | string;
+            aspectRatio?: null | string;
+            requestedDurationSeconds?: null | number;
+            durationSeconds?: null | number;
+            width?: null | number;
+            height?: null | number;
+            fps?: null | number;
+            sizeBytes?: null | number;
+            promptBody?: null | string;
+            cameraMove?: null | string;
+            focusSubject?: null | string;
+            lightTransition?: null | string;
+            createdAt: string;
+        };
+        BffClipList: {
+            clips: components["schemas"]["BffClipRecord"][];
+        };
     };
     responses: never;
     parameters: never;
@@ -550,6 +742,14 @@ export type BffAssetTagsResponse = components['schemas']['BffAssetTagsResponse']
 export type BffVisibilityRequest = components['schemas']['BffVisibilityRequest'];
 export type BffStatusActionRequest = components['schemas']['BffStatusActionRequest'];
 export type BffProjectStatusResponse = components['schemas']['BffProjectStatusResponse'];
+export type BffDurations = components['schemas']['BffDurations'];
+export type BffReferenceSupport = components['schemas']['BffReferenceSupport'];
+export type BffClipProvider = components['schemas']['BffClipProvider'];
+export type BffClipProviderList = components['schemas']['BffClipProviderList'];
+export type BffGenerateClipRequest = components['schemas']['BffGenerateClipRequest'];
+export type BffClipTask = components['schemas']['BffClipTask'];
+export type BffClipRecord = components['schemas']['BffClipRecord'];
+export type BffClipList = components['schemas']['BffClipList'];
 export type $defs = Record<string, never>;
 export interface operations {
     getBffSession: {
@@ -646,7 +846,6 @@ export interface operations {
                 search?: string;
                 status?: string;
                 sort?: string;
-                /** 手加:BFF /bff/projects 已支持('' 全部 | 'unassigned' | <userId>);下次 vg 重生成会自动带上 */
                 assignee?: string;
             };
             header?: never;
@@ -1034,6 +1233,32 @@ export interface operations {
             };
         };
     };
+    deleteBffProjectAsset: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                assetId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Default Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        assetId: string;
+                    };
+                };
+            };
+        };
+    };
     listBffTags: {
         parameters: {
             query?: {
@@ -1131,23 +1356,208 @@ export interface operations {
             };
         };
     };
+    publishBffProject: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Default Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    getBffContent: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                contentId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Default Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    deliverBffProject: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Default Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    listBffClipProviders: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Default Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BffClipProviderList"];
+                };
+            };
+        };
+    };
+    listBffClips: {
+        parameters: {
+            query: {
+                projectId: string;
+                sourceImageRef?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Default Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BffClipList"];
+                };
+            };
+        };
+    };
+    generateBffClip: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BffGenerateClipRequest"];
+            };
+        };
+        responses: {
+            /** @description Default Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BffClipTask"];
+                };
+            };
+        };
+    };
+    getBffClip: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                taskId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Default Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BffClipTask"];
+                };
+            };
+        };
+    };
+    deleteBffClip: {
+        parameters: {
+            query: {
+                projectId: string;
+            };
+            header?: never;
+            path: {
+                clipId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Default Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        ok: boolean;
+                    };
+                };
+            };
+        };
+    };
 }
 export type ChangeBffProjectStatusPath = operations['changeBffProjectStatus']['parameters']['path'];
 export type CompleteBffUploadPath = operations['completeBffUpload']['parameters']['path'];
 export type CompleteBffUploadResponse = operations['completeBffUpload']['responses'][200]['content']['application/json'];
 export type CreateBffAssetCommentPath = operations['createBffAssetComment']['parameters']['path'];
 export type CreateBffProjectCommentPath = operations['createBffProjectComment']['parameters']['path'];
+export type DeleteBffClipPath = operations['deleteBffClip']['parameters']['path'];
+export type DeleteBffClipQuery = operations['deleteBffClip']['parameters']['query'];
+export type DeleteBffClipResponse = operations['deleteBffClip']['responses'][200]['content']['application/json'];
 export type DeleteBffCommentPath = operations['deleteBffComment']['parameters']['path'];
 export type DeleteBffCommentResponse = operations['deleteBffComment']['responses'][200]['content']['application/json'];
+export type DeleteBffProjectAssetPath = operations['deleteBffProjectAsset']['parameters']['path'];
+export type DeleteBffProjectAssetResponse = operations['deleteBffProjectAsset']['responses'][200]['content']['application/json'];
+export type DeliverBffProjectPath = operations['deliverBffProject']['parameters']['path'];
+export type GetBffClipPath = operations['getBffClip']['parameters']['path'];
+export type GetBffContentPath = operations['getBffContent']['parameters']['path'];
 export type GetBffProjectAnalyticsPath = operations['getBffProjectAnalytics']['parameters']['path'];
 export type GetBffProjectPath = operations['getBffProject']['parameters']['path'];
 export type ListBffAssetCommentsPath = operations['listBffAssetComments']['parameters']['path'];
 export type ListBffAssetCommentsQuery = operations['listBffAssetComments']['parameters']['query'];
+export type ListBffClipsQuery = operations['listBffClips']['parameters']['query'];
 export type ListBffProjectCommentsPath = operations['listBffProjectComments']['parameters']['path'];
 export type ListBffProjectCommentsQuery = operations['listBffProjectComments']['parameters']['query'];
 export type ListBffProjectsQuery = operations['listBffProjects']['parameters']['query'];
 export type ListBffTagsQuery = operations['listBffTags']['parameters']['query'];
 export type LogoutBffSessionResponse = operations['logoutBffSession']['responses'][200]['content']['application/json'];
+export type PublishBffProjectPath = operations['publishBffProject']['parameters']['path'];
 export type SaveBffAssetTagsPath = operations['saveBffAssetTags']['parameters']['path'];
 export type SaveBffCommentPath = operations['saveBffComment']['parameters']['path'];
 export type SaveBffProjectAssigneePath = operations['saveBffProjectAssignee']['parameters']['path'];

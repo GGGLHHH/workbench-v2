@@ -3,8 +3,8 @@
 
 import type { ApiRequestOptions } from "@/lib/api-client";
 import { requestJson, requestVoid } from "@/lib/api-client";
-import type { BffAssetTagsRequest, BffAssetTagsResponse, BffAssigneeRequest, BffAssigneeResponse, BffComment, BffCommentPage, BffCommentRequest, BffLoginRequest, BffProject, BffProjectAnalytics, BffProjectMetaRequest, BffProjectMetaResponse, BffProjectOptions, BffProjectPage, BffProjectSaveRequest, BffProjectSaveResponse, BffProjectStats, BffProjectStatusResponse, BffSession, BffStatusActionRequest, BffTagPage, BffUploadRequest, BffUploadTicket, BffVisibilityRequest, ChangeBffProjectStatusPath, CompleteBffUploadPath, CompleteBffUploadResponse, CreateBffAssetCommentPath, CreateBffProjectCommentPath, DeleteBffCommentPath, DeleteBffCommentResponse, GetBffProjectAnalyticsPath, GetBffProjectPath, ListBffAssetCommentsPath, ListBffAssetCommentsQuery, ListBffProjectCommentsPath, ListBffProjectCommentsQuery, ListBffProjectsQuery, ListBffTagsQuery, LogoutBffSessionResponse, SaveBffAssetTagsPath, SaveBffCommentPath, SaveBffProjectAssigneePath, SaveBffProjectMetaPath, SaveBffProjectPath, SaveBffProjectVisibilityPath } from "./api-types";
-import { saveBffComment as buildSaveBffCommentPath, deleteBffComment as buildDeleteBffCommentPath, listBffAssetComments as buildListBffAssetCommentsPath, createBffAssetComment as buildCreateBffAssetCommentPath, getBffProjectOptions as buildGetBffProjectOptionsPath, listBffProjects as buildListBffProjectsPath, getBffProjectStats as buildGetBffProjectStatsPath, getBffProject as buildGetBffProjectPath, saveBffProject as buildSaveBffProjectPath, getBffProjectAnalytics as buildGetBffProjectAnalyticsPath, saveBffAssetTags as buildSaveBffAssetTagsPath, saveBffProjectAssignee as buildSaveBffProjectAssigneePath, listBffProjectComments as buildListBffProjectCommentsPath, createBffProjectComment as buildCreateBffProjectCommentPath, saveBffProjectMeta as buildSaveBffProjectMetaPath, changeBffProjectStatus as buildChangeBffProjectStatusPath, saveBffProjectVisibility as buildSaveBffProjectVisibilityPath, getBffSession as buildGetBffSessionPath, loginBffSession as buildLoginBffSessionPath, logoutBffSession as buildLogoutBffSessionPath, refreshBffSession as buildRefreshBffSessionPath, listBffTags as buildListBffTagsPath, createBffUpload as buildCreateBffUploadPath, completeBffUpload as buildCompleteBffUploadPath } from "./api";
+import type { BffAssetTagsRequest, BffAssetTagsResponse, BffAssigneeRequest, BffAssigneeResponse, BffClipList, BffClipProviderList, BffClipTask, BffComment, BffCommentPage, BffCommentRequest, BffGenerateClipRequest, BffLoginRequest, BffProject, BffProjectAnalytics, BffProjectMetaRequest, BffProjectMetaResponse, BffProjectOptions, BffProjectPage, BffProjectSaveRequest, BffProjectSaveResponse, BffProjectStats, BffProjectStatusResponse, BffSession, BffStatusActionRequest, BffTagPage, BffUploadRequest, BffUploadTicket, BffVisibilityRequest, ChangeBffProjectStatusPath, CompleteBffUploadPath, CompleteBffUploadResponse, CreateBffAssetCommentPath, CreateBffProjectCommentPath, DeleteBffClipPath, DeleteBffClipQuery, DeleteBffClipResponse, DeleteBffCommentPath, DeleteBffCommentResponse, DeleteBffProjectAssetPath, DeleteBffProjectAssetResponse, DeliverBffProjectPath, GetBffClipPath, GetBffContentPath, GetBffProjectAnalyticsPath, GetBffProjectPath, ListBffAssetCommentsPath, ListBffAssetCommentsQuery, ListBffClipsQuery, ListBffProjectCommentsPath, ListBffProjectCommentsQuery, ListBffProjectsQuery, ListBffTagsQuery, LogoutBffSessionResponse, PublishBffProjectPath, SaveBffAssetTagsPath, SaveBffCommentPath, SaveBffProjectAssigneePath, SaveBffProjectMetaPath, SaveBffProjectPath, SaveBffProjectVisibilityPath } from "./api-types";
+import { listBffClipProviders as buildListBffClipProvidersPath, listBffClips as buildListBffClipsPath, generateBffClip as buildGenerateBffClipPath, deleteBffClip as buildDeleteBffClipPath, getBffClip as buildGetBffClipPath, saveBffComment as buildSaveBffCommentPath, deleteBffComment as buildDeleteBffCommentPath, getBffContent as buildGetBffContentPath, listBffAssetComments as buildListBffAssetCommentsPath, createBffAssetComment as buildCreateBffAssetCommentPath, getBffProjectOptions as buildGetBffProjectOptionsPath, listBffProjects as buildListBffProjectsPath, getBffProjectStats as buildGetBffProjectStatsPath, getBffProject as buildGetBffProjectPath, saveBffProject as buildSaveBffProjectPath, getBffProjectAnalytics as buildGetBffProjectAnalyticsPath, deleteBffProjectAsset as buildDeleteBffProjectAssetPath, saveBffAssetTags as buildSaveBffAssetTagsPath, saveBffProjectAssignee as buildSaveBffProjectAssigneePath, listBffProjectComments as buildListBffProjectCommentsPath, createBffProjectComment as buildCreateBffProjectCommentPath, deliverBffProject as buildDeliverBffProjectPath, saveBffProjectMeta as buildSaveBffProjectMetaPath, publishBffProject as buildPublishBffProjectPath, changeBffProjectStatus as buildChangeBffProjectStatusPath, saveBffProjectVisibility as buildSaveBffProjectVisibilityPath, getBffSession as buildGetBffSessionPath, loginBffSession as buildLoginBffSessionPath, logoutBffSession as buildLogoutBffSessionPath, refreshBffSession as buildRefreshBffSessionPath, listBffTags as buildListBffTagsPath, createBffUpload as buildCreateBffUploadPath, completeBffUpload as buildCompleteBffUploadPath } from "./api";
 type RuntimeRequestOptions = Omit<ApiRequestOptions, "json" | "method" | "searchParams" | "signal">;
 function buildSearchParams(query: Record<string, unknown> | undefined): URLSearchParams | undefined {
     if (query === undefined)
@@ -29,6 +29,74 @@ function buildSearchParams(query: Record<string, unknown> | undefined): URLSearc
     return hasParams ? searchParams : undefined;
 }
 // 
+export interface ListBffClipProvidersOptions {
+    query?: never;
+    path?: never;
+    body?: never;
+    signal?: AbortSignal;
+}
+export function listBffClipProviders(options: ListBffClipProvidersOptions, requestOptions: RuntimeRequestOptions = {}): Promise<BffClipProviderList> {
+    return requestJson<BffClipProviderList>(buildListBffClipProvidersPath(), {
+        ...requestOptions,
+        method: "GET",
+        signal: options.signal
+    });
+}
+export interface ListBffClipsOptions {
+    query: ListBffClipsQuery;
+    path?: never;
+    body?: never;
+    signal?: AbortSignal;
+}
+export function listBffClips(options: ListBffClipsOptions, requestOptions: RuntimeRequestOptions = {}): Promise<BffClipList> {
+    return requestJson<BffClipList>(buildListBffClipsPath(), {
+        ...requestOptions,
+        method: "GET",
+        searchParams: buildSearchParams(options.query),
+        signal: options.signal
+    });
+}
+export interface GenerateBffClipOptions {
+    query?: never;
+    path?: never;
+    body: BffGenerateClipRequest;
+    signal?: AbortSignal;
+}
+export function generateBffClip(options: GenerateBffClipOptions, requestOptions: RuntimeRequestOptions = {}): Promise<BffClipTask> {
+    return requestJson<BffClipTask>(buildGenerateBffClipPath(), {
+        ...requestOptions,
+        method: "POST",
+        json: options.body,
+        signal: options.signal
+    });
+}
+export interface DeleteBffClipOptions {
+    query: DeleteBffClipQuery;
+    path: DeleteBffClipPath;
+    body?: never;
+    signal?: AbortSignal;
+}
+export function deleteBffClip(options: DeleteBffClipOptions, requestOptions: RuntimeRequestOptions = {}): Promise<DeleteBffClipResponse> {
+    return requestJson<DeleteBffClipResponse>(buildDeleteBffClipPath(options.path), {
+        ...requestOptions,
+        method: "DELETE",
+        searchParams: buildSearchParams(options.query),
+        signal: options.signal
+    });
+}
+export interface GetBffClipOptions {
+    query?: never;
+    path: GetBffClipPath;
+    body?: never;
+    signal?: AbortSignal;
+}
+export function getBffClip(options: GetBffClipOptions, requestOptions: RuntimeRequestOptions = {}): Promise<BffClipTask> {
+    return requestJson<BffClipTask>(buildGetBffClipPath(options.path), {
+        ...requestOptions,
+        method: "GET",
+        signal: options.signal
+    });
+}
 export interface SaveBffCommentOptions {
     query?: never;
     path: SaveBffCommentPath;
@@ -53,6 +121,19 @@ export function deleteBffComment(options: DeleteBffCommentOptions, requestOption
     return requestJson<DeleteBffCommentResponse>(buildDeleteBffCommentPath(options.path), {
         ...requestOptions,
         method: "DELETE",
+        signal: options.signal
+    });
+}
+export interface GetBffContentOptions {
+    query?: never;
+    path: GetBffContentPath;
+    body?: never;
+    signal?: AbortSignal;
+}
+export function getBffContent(options: GetBffContentOptions, requestOptions: RuntimeRequestOptions = {}): Promise<void> {
+    return requestVoid(buildGetBffContentPath(options.path), {
+        ...requestOptions,
+        method: "GET",
         signal: options.signal
     });
 }
@@ -164,6 +245,19 @@ export function getBffProjectAnalytics(options: GetBffProjectAnalyticsOptions, r
         signal: options.signal
     });
 }
+export interface DeleteBffProjectAssetOptions {
+    query?: never;
+    path: DeleteBffProjectAssetPath;
+    body?: never;
+    signal?: AbortSignal;
+}
+export function deleteBffProjectAsset(options: DeleteBffProjectAssetOptions, requestOptions: RuntimeRequestOptions = {}): Promise<DeleteBffProjectAssetResponse> {
+    return requestJson<DeleteBffProjectAssetResponse>(buildDeleteBffProjectAssetPath(options.path), {
+        ...requestOptions,
+        method: "DELETE",
+        signal: options.signal
+    });
+}
 export interface SaveBffAssetTagsOptions {
     query?: never;
     path: SaveBffAssetTagsPath;
@@ -220,6 +314,19 @@ export function createBffProjectComment(options: CreateBffProjectCommentOptions,
         signal: options.signal
     });
 }
+export interface DeliverBffProjectOptions {
+    query?: never;
+    path: DeliverBffProjectPath;
+    body?: never;
+    signal?: AbortSignal;
+}
+export function deliverBffProject(options: DeliverBffProjectOptions, requestOptions: RuntimeRequestOptions = {}): Promise<void> {
+    return requestVoid(buildDeliverBffProjectPath(options.path), {
+        ...requestOptions,
+        method: "POST",
+        signal: options.signal
+    });
+}
 export interface SaveBffProjectMetaOptions {
     query?: never;
     path: SaveBffProjectMetaPath;
@@ -231,6 +338,19 @@ export function saveBffProjectMeta(options: SaveBffProjectMetaOptions, requestOp
         ...requestOptions,
         method: "PUT",
         json: options.body,
+        signal: options.signal
+    });
+}
+export interface PublishBffProjectOptions {
+    query?: never;
+    path: PublishBffProjectPath;
+    body?: never;
+    signal?: AbortSignal;
+}
+export function publishBffProject(options: PublishBffProjectOptions, requestOptions: RuntimeRequestOptions = {}): Promise<void> {
+    return requestVoid(buildPublishBffProjectPath(options.path), {
+        ...requestOptions,
+        method: "POST",
         signal: options.signal
     });
 }

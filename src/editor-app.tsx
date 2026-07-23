@@ -21,6 +21,7 @@ import { migrateLegacyOverlays } from '@/lib/video-overlays'
 import { buildDownloadName } from '@/lib/download-name'
 import { CanvasPresetsPanel } from '@/components/canvas-presets-panel'
 import { CoverInspectorPanel } from '@/components/overlay-inspector-panels'
+import { ClipGeneratorPanel } from '@/components/clip-generator/clip-generator-panel'
 import { RendersList } from '@/components/renders-list'
 import { COVER_KIND } from '@/overlays/overlay-design'
 import { Button } from '@/components/ui/button'
@@ -179,6 +180,11 @@ export function EditorApp() {
                   检查器本是并列多段(Canvas/时长/导出),后段增长抓不到 → 渐隐失灵;单 wrapper 随整体长高。 */}
               <div>
                 <Inspector canvasExtra={<CanvasPresetsPanel />} exportExtra={<RendersList id={id ?? null} />} />
+                {/* 图生视频面板常驻(选不选中块都在):无选中=全项目 clip 集合;选中图片/clip 块=该块的集合。
+                    不能放进 Inspector 的 exportExtra —— 那个槽只在「未选中任何块」时渲染,选中块就被隐藏。 */}
+                <div className="border-t border-border p-3">
+                  <ClipGeneratorPanel projectId={id ?? null} />
+                </div>
               </div>
             </ScrollArea>
           </aside>

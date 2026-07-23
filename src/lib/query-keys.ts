@@ -42,4 +42,12 @@ export const queryKeys = {
     all: ['bff', 'tags'] as const,
     infinite: (search?: string) => ['bff', 'tags', 'infinite', search ?? ''] as const,
   },
+  // 图生视频:provider 目录(全局)、某项目某源图的 take 列表、单个生成任务轮询。
+  clips: {
+    providers: () => ['bff', 'clips', 'providers'] as const,
+    // 挂在 [bff,clips,list,projectId] 前缀下 → 删/生成后按项目前缀失效即命中所有源图。
+    list: (projectId: string, sourceImageRef?: string) =>
+      ['bff', 'clips', 'list', projectId, sourceImageRef ?? ''] as const,
+    task: (taskId: string) => ['bff', 'clips', 'task', taskId] as const,
+  },
 }
