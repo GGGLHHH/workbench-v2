@@ -25,6 +25,7 @@ import { AnalyticsPanel, PUBLISHED_STATUSES } from '@/components/project-nav/det
 import { detailToDraft, draftToMeta } from '@/components/project-nav/detail/meta-draft'
 import { MetaForm } from '@/components/project-nav/detail/meta-form'
 import { AssetGrid } from '@/components/project-nav/detail/asset-grid'
+import { AgentAssetUploader } from '@/components/project-nav/detail/agent-asset-uploader'
 
 import {
   useProject,
@@ -370,6 +371,9 @@ export function DetailContent({ visible }: { visible: boolean }) {
                           <AssetGrid projectId={project.id} assets={d.assets} />
                         </>
                       ) : null}
+
+                      <Separator />
+                      <AgentAssetUploader projectId={project.id} />
 
                       <Separator />
 

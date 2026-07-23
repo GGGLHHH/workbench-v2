@@ -1311,4 +1311,44 @@ export const registerProjectRoutes = (app: FastifyInstance): void => {
       return { id, contentId: up.content_id };
     },
   );
+
+  // 追加 agent-assets:浏览器已用 /bff/uploads(+ /complete)把文件传成 content,这里把 content_id
+  // 登记进项目 agent_assets(面板「Clips」组)。上游只有整表替换,且是读-改-写 → 一次收全部 content_id
+  // 做单次替换(逐个调会互相覆盖)。按 content_id 幂等去重(整表替换会重建 id,不能按 id 比;见删除资产路由)。
+  app.post<{ Params: { id: string }; Body: { contentIds: string[] } }>(
+    '/bff/projects/:id/agent-assets',
+    {
+      schema: {
+        operationId: 'addBffProjectAgentAssets',
+        tags: ['bff'],
+        params: idParams,
+        body: {
+          type: 'object',
+          required: ['contentIds'],
+          properties: { contentIds: { type: 'array', items: { type: 'string' }, minItems: 1, maxItems: 20 } },
+        },
+        response: {
+          200: {
+            type: 'object',
+            required: ['id', 'added'],
+            properties: { id: { type: 'string' }, added: { type: 'number' } },
+          },
+        },
+      },
+    },
+    async (req) => {
+      const { id } = req.params;
+      const auth = forwardAuth(req);
+      const proj = (await getProject({ path: { id } }, auth)) as unknown as {
+        agent_assets?: { content_id?: string }[];
+      };
+      const current = (proj.agent_assets ?? []).map((a) => a.content_id).filter((x): x is string => !!x);
+      const seen = new Set(current);
+      const added = req.body.contentIds.filter((c) => !seen.has(c));
+      if (added.length) {
+        await replaceProjectAgentAssets({ path: { id }, body: { agent_assets: [...current, ...added] } }, auth);
+      }
+      return { id, added: added.length };
+    },
+  );
 };

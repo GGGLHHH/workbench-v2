@@ -14,6 +14,7 @@ import type {
   BffComment,
   BffCommentPage,
   BffProject,
+  BffProjectAsset,
   BffProjectMetaRequest,
   BffProjectPage,
   BffProjectSaveRequest,
@@ -352,20 +353,48 @@ export function useProjectAnalytics(id: string | null, enabled: boolean) {
   })
 }
 
+// minio 预签名 PUT。fetch 拿不到上传进度 → 用 XHR 的 upload.onprogress(与库里 http-transport 同款)。
+// signal 支持中止;onProgress 回传已传字节数(调用方按总字节聚合成百分比)。
+function putWithProgress(
+  url: string,
+  file: File,
+  contentType: string,
+  opts?: { signal?: AbortSignal; onProgress?: (loadedBytes: number) => void },
+): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest()
+    xhr.open('PUT', url)
+    xhr.setRequestHeader('content-type', contentType)
+    if (opts?.onProgress) {
+      xhr.upload.onprogress = (e) => {
+        if (e.lengthComputable) opts.onProgress!(e.loaded)
+      }
+    }
+    const fail = (status: number) => reject(new Error(i18n.t('projects.attachmentUploadFailed', { status })))
+    xhr.onload = () => (xhr.status >= 200 && xhr.status < 300 ? resolve() : fail(xhr.status))
+    xhr.onerror = () => fail(0)
+    if (opts?.signal) {
+      if (opts.signal.aborted) return reject(new DOMException('aborted', 'AbortError'))
+      opts.signal.addEventListener('abort', () => xhr.abort(), { once: true })
+      xhr.onabort = () => reject(new DOMException('aborted', 'AbortError'))
+    }
+    xhr.send(file)
+  })
+}
+
 // 附件上传三步:换票 → 浏览器直传 minio 预签名地址 → 落库。
 // 中间那步刻意绕开 BFF —— 50MB 的文件没必要在 Node 里过一遍(一次内存拷贝 + 一倍带宽)。
-// 不是 hook:调用方要对 N 个文件并发跑它,做成 hook 反而得自己排队。
-export async function uploadAttachment(file: File, signal?: AbortSignal): Promise<string> {
+// 不是 hook:调用方要对 N 个文件并发跑它,做成 hook 反而得自己排队。onProgress 回传已传字节。
+export async function uploadAttachment(
+  file: File,
+  signal?: AbortSignal,
+  onProgress?: (loadedBytes: number) => void,
+): Promise<string> {
+  const contentType = file.type || 'application/octet-stream'
   const { contentId, uploadUrl } = await createBffUpload({
-    body: { fileName: file.name, contentType: file.type || 'application/octet-stream', fileSize: file.size },
+    body: { fileName: file.name, contentType, fileSize: file.size },
   })
-  const put = await fetch(uploadUrl, {
-    method: 'PUT',
-    body: file,
-    headers: { 'content-type': file.type || 'application/octet-stream' },
-    signal,
-  })
-  if (!put.ok) throw new Error(i18n.t('projects.attachmentUploadFailed', { status: put.status }))
+  await putWithProgress(uploadUrl, file, contentType, { signal, onProgress })
   await completeBffUpload({ path: { id: contentId } })
   return contentId
 }
@@ -561,6 +590,88 @@ export function useDeliverProject() {
       void queryClient.invalidateQueries({ queryKey: queryKeys.projects.detail(id) })
     },
     onError: () => toast.error(t('projects.deliverFailed')),
+  })
+}
+
+// 上传图片登记为项目 agent-asset(面板「Clips」组):并发直传 minio(uploadAttachment)拿 content_id,
+// 再一次性 POST 给 BFF 单次整表替换追加(逐个调会互相覆盖)。成功后刷新详情。端点走 requestJson(同 deliver)。
+export function useUploadAgentAssets() {
+  const { t } = useTranslation()
+  return useMutation({
+    mutationFn: async ({
+      projectId,
+      files,
+      onFile,
+    }: {
+      projectId: string
+      files: File[]
+      // 逐文件回报:上传中给 pct(0..1),终态给 status;调用方按 index 落到对应行。
+      onFile?: (index: number, update: { pct?: number; status?: 'done' | 'error' }) => void
+    }) => {
+      // 单文件成败:allSettled 独立跑,失败的不拖累其余;只把成功的 content_id 批量登记。
+      const settled = await Promise.allSettled(
+        files.map((f, i) =>
+          uploadAttachment(f, undefined, (bytes) => onFile?.(i, { pct: f.size ? Math.min(1, bytes / f.size) : 1 }))
+            .then((contentId) => {
+              onFile?.(i, { pct: 1, status: 'done' })
+              return contentId
+            })
+            .catch((e) => {
+              onFile?.(i, { status: 'error' })
+              throw e
+            }),
+        ),
+      )
+      const items = settled.flatMap((r, i) => (r.status === 'fulfilled' ? [{ contentId: r.value, name: files[i].name }] : []))
+      const failed = settled.length - items.length
+      let added = 0
+      if (items.length) {
+        const res = await requestJson<{ id: string; added: number }>(`/bff/projects/${projectId}/agent-assets`, {
+          method: 'POST',
+          json: { contentIds: items.map((it) => it.contentId) },
+        })
+        added = res.added
+      }
+      return { added, failed, items }
+    },
+    onSuccess: ({ added, failed, items }, { projectId }) => {
+      if (items.length) {
+        // 乐观:成功的直接插进详情缓存的 agent 组(url 走 /bff/content 内容解析,即时可显),clipCount +N。
+        // 只标记过期、不立刻重拉(refetchType:'none')—— 免得刚插的乐观条目被回填闪一下;下次 mount 再同步
+        // 真身(真实 id/海报)。按 content_id 去重,与 useDeleteProjectAsset 同套路。
+        const key = queryKeys.projects.detail(projectId)
+        queryClient.setQueryData<BffProject>(key, (old) => {
+          if (!old?.detail) return old
+          const existing = new Set((old.detail.assets ?? []).map((a) => a.contentId ?? a.id))
+          const fresh: BffProjectAsset[] = items
+            .filter((it) => !existing.has(it.contentId))
+            .map((it) => ({
+              id: it.contentId,
+              contentId: it.contentId,
+              group: 'agent',
+              url: `/bff/content/${it.contentId}`,
+              kind: 'image',
+              name: it.name,
+              commentCount: 0,
+              thumbnailUrl: null,
+            }))
+          if (!fresh.length) return old
+          return {
+            ...old,
+            detail: {
+              ...old.detail,
+              assets: [...(old.detail.assets ?? []), ...fresh],
+              clipCount: old.detail.clipCount + fresh.length,
+            },
+          }
+        })
+        toast.success(t('projects.agentAssetsUploaded', { count: added }))
+        void queryClient.invalidateQueries({ queryKey: key, refetchType: 'none' })
+      }
+      if (failed) toast.error(t('projects.agentAssetsPartialFailed', { count: failed }))
+    },
+    // 登记(replaceProjectAgentAssets)失败才到这;逐文件上传失败已在上面就地标记、不 throw。
+    onError: (e) => toast.error(e instanceof Error && e.message ? e.message : t('projects.agentAssetUploadFailed')),
   })
 }
 
