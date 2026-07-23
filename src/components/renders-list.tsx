@@ -98,7 +98,7 @@ function RendersView({
               footer={
                 <>
                   <div className="flex items-center gap-0.5">
-                    <Button size="xs" variant="ghost" className="text-muted-foreground" render={<a href={r.url} rel="noreferrer" />}>
+                    <Button size="xs" variant="ghost" className="text-muted-foreground" nativeButton={false} render={<a href={r.url} rel="noreferrer" />}>
                       <Download />
                       {t('renders.download')}
                     </Button>
