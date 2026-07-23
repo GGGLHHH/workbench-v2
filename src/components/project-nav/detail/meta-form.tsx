@@ -2,7 +2,7 @@ import type { BffProjectOptions } from '@/generated/api-types'
 import type { MetaDraft } from './meta-draft'
 import { Row } from '@/components/project-nav/fields'
 import { Input } from '@/components/ui/input'
-import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select'
+import { MemberInfiniteSelect } from '@/components/member-infinite-select'
 import { Button } from '@/components/ui/button'
 
 // 编辑表单:1:1 对齐 xchangeai-workbench 的 ProjectMetaPanel(字段、顺序、行分组、下拉、
@@ -26,9 +26,9 @@ export function MetaForm({
     onChange({ ...v, [k]: e.target.value })
 
   const selects = [
-    { key: 'agencyId', label: 'Agency', empty: 'No agency', items: options?.agencies },
-    { key: 'agentId', label: 'Agent', empty: 'No agent', items: options?.agents },
-    { key: 'assigneeId', label: 'Assigned creator', empty: 'Unassigned', items: options?.assignees },
+    { key: 'agencyId', kind: 'agency', label: 'Agency', empty: 'No agency', items: options?.agencies },
+    { key: 'agentId', kind: 'agent', label: 'Agent', empty: 'No agent', items: options?.agents },
+    { key: 'assigneeId', kind: 'assignee', label: 'Assigned creator', empty: 'Unassigned', items: options?.assignees },
   ] as const
 
   return (
@@ -91,14 +91,14 @@ export function MetaForm({
       </div>
       {selects.map((s) => (
         <Row key={s.key} label={s.label}>
-          <NativeSelect className="h-8" disabled={optionsLoading} value={v[s.key]} onChange={set(s.key)}>
-            <NativeSelectOption value="">{optionsLoading ? 'Loading…' : s.empty}</NativeSelectOption>
-            {(s.items ?? []).map((o) => (
-              <NativeSelectOption key={o.id} value={o.id}>
-                {o.name}
-              </NativeSelectOption>
-            ))}
-          </NativeSelect>
+          <MemberInfiniteSelect
+            kind={s.kind}
+            value={v[s.key]}
+            selectedItem={(s.items ?? []).find((o) => o.id === v[s.key])}
+            placeholder={s.empty}
+            disabled={optionsLoading}
+            onChange={(item) => onChange({ ...v, [s.key]: item?.id ?? '' })}
+          />
         </Row>
       ))}
       <div className="flex justify-end gap-2 pt-1">

@@ -390,6 +390,16 @@
     "preview": "预览",
     "title": "成片"
   },
+  "memberSelect": {
+    "empty": "无匹配项",
+    "loadingMore": "加载更多…",
+    "searchPlaceholder": "搜索…"
+  },
+  "promptPresetSelect": {
+    "empty": "无匹配预设",
+    "loadingMore": "加载更多…",
+    "searchPlaceholder": "搜索预设…"
+  },
   "tagSelect": {
     "empty": "无匹配标签",
     "loadingMore": "加载更多…",

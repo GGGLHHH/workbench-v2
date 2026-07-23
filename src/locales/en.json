@@ -390,6 +390,16 @@
     "preview": "Preview",
     "title": "Renders"
   },
+  "memberSelect": {
+    "empty": "No matches",
+    "loadingMore": "Loading more…",
+    "searchPlaceholder": "Search…"
+  },
+  "promptPresetSelect": {
+    "empty": "No matching presets",
+    "loadingMore": "Loading more…",
+    "searchPlaceholder": "Search presets…"
+  },
   "tagSelect": {
     "empty": "No matching tags",
     "loadingMore": "Loading more…",

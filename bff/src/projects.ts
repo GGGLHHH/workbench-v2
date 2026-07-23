@@ -25,6 +25,7 @@ import {
   listProjectAssetsComments,
   listProjectComments,
   listProjects,
+  listPromptPresets,
   listTags,
   listUserOptions,
   prepareProject,
@@ -337,6 +338,27 @@ export const registerProjectRoutes = (app: FastifyInstance): void => {
     },
   });
   app.addSchema({
+    $id: 'BffPromptPreset',
+    type: 'object',
+    required: ['id', 'name', 'body'],
+    properties: {
+      id: { type: 'string' },
+      name: { type: 'string' }, // 预设名(展示用)
+      body: { type: 'string' }, // prompt 正文
+    },
+  });
+  app.addSchema({
+    $id: 'BffPromptPresetPage',
+    type: 'object',
+    required: ['items', 'total', 'limit', 'offset'],
+    properties: {
+      items: { type: 'array', items: { $ref: 'BffPromptPreset#' } },
+      total: { type: 'integer' },
+      limit: { type: 'integer' },
+      offset: { type: 'integer' },
+    },
+  });
+  app.addSchema({
     $id: 'BffProjectAsset',
     type: 'object',
     required: ['id', 'group', 'url', 'kind', 'commentCount'],
@@ -370,6 +392,17 @@ export const registerProjectRoutes = (app: FastifyInstance): void => {
       agencies: { type: 'array', items: { $ref: 'BffOption#' } },
       agents: { type: 'array', items: { $ref: 'BffOption#' } },
       assignees: { type: 'array', items: { $ref: 'BffOption#' } },
+    },
+  });
+  app.addSchema({
+    $id: 'BffOptionPage',
+    type: 'object',
+    required: ['items', 'total', 'limit', 'offset'],
+    properties: {
+      items: { type: 'array', items: { $ref: 'BffOption#' } },
+      total: { type: 'integer' },
+      limit: { type: 'integer' },
+      offset: { type: 'integer' },
     },
   });
   app.addSchema({
@@ -1049,6 +1082,40 @@ export const registerProjectRoutes = (app: FastifyInstance): void => {
     },
   )
 
+  // 预设 prompt 目录:上游 admin/prompt-presets(PageResponsePromptPresetModel,limit/offset 分页)。
+  // 只读、供无限下拉选择;归一成 { id, name, body }。prompt-preset 与 agent_asset 靠共享 tag 关联,
+  // 具体喂给图生视频时由消费方决定(这里只提供目录)。
+  app.get<{ Querystring: { search?: string; limit?: number; offset?: number } }>(
+    '/bff/prompt-presets',
+    {
+      schema: {
+        operationId: 'listBffPromptPresets',
+        tags: ['bff'],
+        querystring: {
+          type: 'object',
+          properties: {
+            search: { type: 'string' },
+            limit: { type: 'integer' },
+            offset: { type: 'integer' },
+          },
+        },
+        response: { 200: { $ref: 'BffPromptPresetPage#' } },
+      },
+    },
+    async (req) => {
+      const { search, limit, offset } = req.query
+      const page = await listPromptPresets({ query: { search, limit, offset } }, forwardAuth(req))
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const toPreset = (p: any) => ({ id: p?.id ?? '', name: p?.name ?? '', body: p?.body ?? '' })
+      return {
+        items: (page.items ?? []).map(toPreset),
+        total: page.total ?? 0,
+        limit: page.limit ?? limit ?? 20,
+        offset: page.offset ?? offset ?? 0,
+      }
+    },
+  )
+
   // 资产房间标签:从 tag 目录选好 id 后按 tag_ids 全量覆盖(单资产端点)。前端在下拉里已拿到
   // 目录 id,不必再走 batch 的 by-name 自动建标签那条路。返回覆盖后的标签实体供前端校正乐观值。
   app.put<{ Params: { id: string; assetId: string }; Body: { tagIds: string[] } }>(
@@ -1123,6 +1190,51 @@ export const registerProjectRoutes = (app: FastifyInstance): void => {
         agencies: (agencies.items ?? []).map((a) => ({ id: a.id, name: a.display_name || 'Unnamed agency' })),
         agents: users(agents),
         assignees: users(assignees),
+      };
+    },
+  );
+
+  // 成员选项的无限下拉数据源(agency / agent / assignee):一条 kind 路由收敛三者,按 search 分页。
+  // agency 走 listAgencyOptions;agent/assignee 走 listUserOptions + 各自 role_id。归一成 { id, name } 信封,
+  // 与 /bff/tags 同形。替代 /bff/project-options 那种一次性拉 100 条的做法(那条仍保留,别处可能用)。
+  app.get<{ Querystring: { kind: 'agency' | 'agent' | 'assignee'; search?: string; limit?: number; offset?: number } }>(
+    '/bff/member-options',
+    {
+      schema: {
+        operationId: 'listBffMemberOptions',
+        tags: ['bff'],
+        querystring: {
+          type: 'object',
+          required: ['kind'],
+          properties: {
+            kind: { type: 'string', enum: ['agency', 'agent', 'assignee'] },
+            search: { type: 'string' },
+            limit: { type: 'integer' },
+            offset: { type: 'integer' },
+          },
+        },
+        response: { 200: { $ref: 'BffOptionPage#' } },
+      },
+    },
+    async (req) => {
+      const { kind, search, limit, offset } = req.query;
+      const auth = forwardAuth(req);
+      if (kind === 'agency') {
+        const page = await listAgencyOptions({ query: { search, limit, offset } }, auth);
+        return {
+          items: (page.items ?? []).map((a) => ({ id: a.id, name: a.display_name || 'Unnamed agency' })),
+          total: page.total ?? 0,
+          limit: page.limit ?? limit ?? 20,
+          offset: page.offset ?? offset ?? 0,
+        };
+      }
+      const role_id = kind === 'agent' ? AGENT_ROLE_ID : CREATOR_ROLE_ID;
+      const page = await listUserOptions({ query: { search, limit, offset, role_id } }, auth);
+      return {
+        items: (page.items ?? []).map((u) => ({ id: u.id, name: u.full_name || 'Unnamed' })),
+        total: page.total ?? 0,
+        limit: page.limit ?? limit ?? 20,
+        offset: page.offset ?? offset ?? 0,
       };
     },
   );

@@ -42,6 +42,15 @@ export const queryKeys = {
     all: ['bff', 'tags'] as const,
     infinite: (search?: string) => ['bff', 'tags', 'infinite', search ?? ''] as const,
   },
+  // 预设 prompt 目录:全局一份(无限下拉按 search 分页),与 tags 同构。
+  promptPresets: {
+    all: ['bff', 'prompt-presets'] as const,
+    infinite: (search?: string) => ['bff', 'prompt-presets', 'infinite', search ?? ''] as const,
+  },
+  // 成员选项(agency/agent/assignee):按 kind + search 分页的无限下拉。
+  memberOptions: {
+    infinite: (kind: string, search?: string) => ['bff', 'member-options', kind, 'infinite', search ?? ''] as const,
+  },
   // 图生视频:provider 目录(全局)、某项目某源图的 take 列表、单个生成任务轮询。
   clips: {
     providers: () => ['bff', 'clips', 'providers'] as const,

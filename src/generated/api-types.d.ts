@@ -258,6 +258,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/bff/prompt-presets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["listBffPromptPresets"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/bff/projects/{id}/assets/{assetId}/tags": {
         parameters: {
             query?: never;
@@ -298,6 +314,22 @@ export interface paths {
             cookie?: never;
         };
         get: operations["getBffProjectOptions"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/bff/member-options": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["listBffMemberOptions"];
         put?: never;
         post?: never;
         delete?: never;
@@ -348,6 +380,22 @@ export interface paths {
         get?: never;
         put?: never;
         post: operations["deliverBffProject"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/bff/projects/{id}/agent-assets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["addBffProjectAgentAssets"];
         delete?: never;
         options?: never;
         head?: never;
@@ -463,6 +511,17 @@ export interface components {
             limit: number;
             offset: number;
         };
+        BffPromptPreset: {
+            id: string;
+            name: string;
+            body: string;
+        };
+        BffPromptPresetPage: {
+            items: components["schemas"]["BffPromptPreset"][];
+            total: number;
+            limit: number;
+            offset: number;
+        };
         BffProjectAsset: {
             id: string;
             contentId?: null | string;
@@ -486,6 +545,12 @@ export interface components {
             agencies: components["schemas"]["BffOption"][];
             agents: components["schemas"]["BffOption"][];
             assignees: components["schemas"]["BffOption"][];
+        };
+        BffOptionPage: {
+            items: components["schemas"]["BffOption"][];
+            total: number;
+            limit: number;
+            offset: number;
         };
         BffProjectMetaRequest: {
             address: string;
@@ -718,9 +783,12 @@ export type BffProjectSummary = components['schemas']['BffProjectSummary'];
 export type BffProjectStats = components['schemas']['BffProjectStats'];
 export type BffTag = components['schemas']['BffTag'];
 export type BffTagPage = components['schemas']['BffTagPage'];
+export type BffPromptPreset = components['schemas']['BffPromptPreset'];
+export type BffPromptPresetPage = components['schemas']['BffPromptPresetPage'];
 export type BffProjectAsset = components['schemas']['BffProjectAsset'];
 export type BffOption = components['schemas']['BffOption'];
 export type BffProjectOptions = components['schemas']['BffProjectOptions'];
+export type BffOptionPage = components['schemas']['BffOptionPage'];
 export type BffProjectMetaRequest = components['schemas']['BffProjectMetaRequest'];
 export type BffProjectMetaResponse = components['schemas']['BffProjectMetaResponse'];
 export type BffProjectDetail = components['schemas']['BffProjectDetail'];
@@ -1283,6 +1351,30 @@ export interface operations {
             };
         };
     };
+    listBffPromptPresets: {
+        parameters: {
+            query?: {
+                search?: string;
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Default Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BffPromptPresetPage"];
+                };
+            };
+        };
+    };
     saveBffAssetTags: {
         parameters: {
             query?: never;
@@ -1356,6 +1448,31 @@ export interface operations {
             };
         };
     };
+    listBffMemberOptions: {
+        parameters: {
+            query: {
+                kind: "agency" | "agent" | "assignee";
+                search?: string;
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Default Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BffOptionPage"];
+                };
+            };
+        };
+    };
     publishBffProject: {
         parameters: {
             query?: never;
@@ -1413,6 +1530,37 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    addBffProjectAgentAssets: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    contentIds: string[];
+                };
+            };
+        };
+        responses: {
+            /** @description Default Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        added: number;
+                    };
+                };
             };
         };
     };
@@ -1532,6 +1680,9 @@ export interface operations {
         };
     };
 }
+export type AddBffProjectAgentAssetsPath = operations['addBffProjectAgentAssets']['parameters']['path'];
+export type AddBffProjectAgentAssetsRequest = operations['addBffProjectAgentAssets']['requestBody']['content']['application/json'];
+export type AddBffProjectAgentAssetsResponse = operations['addBffProjectAgentAssets']['responses'][200]['content']['application/json'];
 export type ChangeBffProjectStatusPath = operations['changeBffProjectStatus']['parameters']['path'];
 export type CompleteBffUploadPath = operations['completeBffUpload']['parameters']['path'];
 export type CompleteBffUploadResponse = operations['completeBffUpload']['responses'][200]['content']['application/json'];
@@ -1552,9 +1703,11 @@ export type GetBffProjectPath = operations['getBffProject']['parameters']['path'
 export type ListBffAssetCommentsPath = operations['listBffAssetComments']['parameters']['path'];
 export type ListBffAssetCommentsQuery = operations['listBffAssetComments']['parameters']['query'];
 export type ListBffClipsQuery = operations['listBffClips']['parameters']['query'];
+export type ListBffMemberOptionsQuery = operations['listBffMemberOptions']['parameters']['query'];
 export type ListBffProjectCommentsPath = operations['listBffProjectComments']['parameters']['path'];
 export type ListBffProjectCommentsQuery = operations['listBffProjectComments']['parameters']['query'];
 export type ListBffProjectsQuery = operations['listBffProjects']['parameters']['query'];
+export type ListBffPromptPresetsQuery = operations['listBffPromptPresets']['parameters']['query'];
 export type ListBffTagsQuery = operations['listBffTags']['parameters']['query'];
 export type LogoutBffSessionResponse = operations['logoutBffSession']['responses'][200]['content']['application/json'];
 export type PublishBffProjectPath = operations['publishBffProject']['parameters']['path'];
