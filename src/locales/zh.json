@@ -36,6 +36,8 @@
     "addedToEditor": "已加入编辑器",
     "addFailed": "加入编辑器失败",
     "deleteTake": "删除候选",
+    "confirmDelete": "确认删除?",
+    "resolving": "识别绑定中…",
     "camera": {
       "auto": "自动",
       "slowPushIn": "缓慢推进",

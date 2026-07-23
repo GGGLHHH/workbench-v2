@@ -36,6 +36,8 @@
     "addedToEditor": "Added to editor",
     "addFailed": "Failed to add to editor",
     "deleteTake": "Delete take",
+    "confirmDelete": "Confirm delete?",
+    "resolving": "Resolving…",
     "camera": {
       "auto": "Auto",
       "slowPushIn": "Slow push-in",

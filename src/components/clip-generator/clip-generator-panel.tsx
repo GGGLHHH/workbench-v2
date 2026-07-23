@@ -4,7 +4,7 @@
 // 高亮当前形态。零改库:替换只重写 items[itemId](见 lib/replace-clip)。take 卡片对齐 RendersList 的 MediaCard。
 import { useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { ImagePlus, Loader2, Plus, RotateCcw, Sparkles, Trash2 } from 'lucide-react'
+import { Check, ImagePlus, Loader2, Plus, RotateCcw, Sparkles, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { useEditor } from '@gedatou/editor'
 import {
@@ -18,10 +18,12 @@ import {
 import { addProjectAssetToEditor } from '@/lib/add-to-editor'
 import { replaceItemWithClip, revertItemToPhoto } from '@/lib/replace-clip'
 import { MediaCard, Thumb, duration as fmtDuration } from '@/components/media-card'
+import { MediaLightbox, useMediaLightbox, type ViewerItem } from '@/components/media-lightbox'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select'
 import { Textarea } from '@/components/ui/textarea'
+import { cn } from '@/lib/utils'
 
 const CAMERA_MOVES = ['auto', 'slowPushIn', 'slowPullBack', 'panLeft', 'panRight', 'tiltUp', 'tiltDown', 'staticHold'] as const
 const PHOTO = 'photo' as const
@@ -39,6 +41,36 @@ type Binding = {
   current: string // clipId | 'photo'
 }
 
+// 删除 take:首点转确认(红勾),再点才真删;失焦即撤销。各按钮自持 mutation → 删一条不会禁掉其它。
+// isCurrent(正在用的 clip)时禁用并给出提示,不允许删。对齐 AssetGrid 的二次确认约定。
+function DeleteTakeButton({ clipId, projectId, disabled }: { clipId: string; projectId: string; disabled?: boolean }) {
+  const { t } = useTranslation()
+  const del = useDeleteClip()
+  const [confirm, setConfirm] = useState(false)
+  const label = disabled ? t('clipGen.cannotDeleteCurrent') : confirm ? t('clipGen.confirmDelete') : t('clipGen.deleteTake')
+  return (
+    <Button
+      size="icon-xs"
+      variant="ghost"
+      className={cn('text-muted-foreground hover:text-destructive', confirm && 'text-destructive')}
+      aria-label={label}
+      title={label}
+      disabled={disabled || del.isPending}
+      onBlur={() => setConfirm(false)}
+      onClick={() => {
+        if (confirm) {
+          setConfirm(false)
+          del.mutate({ clipId, projectId })
+        } else {
+          setConfirm(true)
+        }
+      }}
+    >
+      {del.isPending ? <Loader2 className="animate-spin" /> : confirm ? <Check /> : <Trash2 />}
+    </Button>
+  )
+}
+
 export function ClipGeneratorPanel({ projectId }: { projectId: string | null }) {
   const { t } = useTranslation()
 
@@ -46,7 +78,9 @@ export function ClipGeneratorPanel({ projectId }: { projectId: string | null }) 
   const selectedId = useEditor((s) => (s.selectedItemIds.length === 1 ? s.selectedItemIds[0] : null))
   const item = useEditor((s) => (selectedId ? s.undoable.items[selectedId] : null))
   const imageAsset = useEditor((s) => (item && item.type === 'image' ? s.undoable.assets[item.assetId] : null))
-  const allClips = useProjectClips(projectId, null).data ?? []
+  const clipsQ = useProjectClips(projectId, null)
+  const allClips = clipsQ.data ?? []
+  const lightbox = useMediaLightbox()
 
   const binding: Binding | null = useMemo(() => {
     if (!item) return null
@@ -73,6 +107,17 @@ export function ClipGeneratorPanel({ projectId }: { projectId: string | null }) 
     [allClips, binding],
   )
 
+  // 灯箱预览项:有绑定 = 原图 + 该图各 take(点卡片放大播放);无绑定 = 全项目 clip。索引与卡片一一对应。
+  const viewerItems = useMemo<ViewerItem[]>(() => {
+    if (binding) {
+      return [
+        { url: binding.photoUrl, kind: 'image', name: binding.photoName },
+        ...takes.map((c) => ({ url: c.url, kind: 'video', name: c.provider })),
+      ]
+    }
+    return allClips.map((c) => ({ url: c.url, kind: 'video', name: c.provider }))
+  }, [binding, takes, allClips])
+
   // —— 生成控件状态(始终挂载,保证 hook 顺序稳定;无绑定时不渲染)——
   const providersQ = useClipProviders()
   const providers = providersQ.data ?? []
@@ -94,6 +139,8 @@ export function ClipGeneratorPanel({ projectId }: { projectId: string | null }) 
 
   const gen = useGenerateClip()
   const [taskId, setTaskId] = useState<string | null>(null)
+  // 记住这次生成是「给哪张源图」的:任务 id 是组件级单槽,若不记录,切到别的块后转圈会画错块上。
+  const [genRef, setGenRef] = useState<string | null>(null)
   const task = useClipTask(taskId).data
   const generating = !!taskId && task?.status !== 'done' && task?.status !== 'error'
   useEffect(() => {
@@ -109,7 +156,6 @@ export function ClipGeneratorPanel({ projectId }: { projectId: string | null }) 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [task?.status])
 
-  const del = useDeleteClip()
   const [adding, setAdding] = useState<string | null>(null)
   const onAddToEditor = async (take: { clipId: string; url: string; durationSeconds?: number | null }) => {
     setAdding(take.clipId)
@@ -137,7 +183,10 @@ export function ClipGeneratorPanel({ projectId }: { projectId: string | null }) 
         promptBody: promptBody.trim() || undefined,
       },
       {
-        onSuccess: (created) => setTaskId(created.taskId),
+        onSuccess: (created) => {
+          setTaskId(created.taskId)
+          setGenRef(binding.sourceImageRef)
+        },
         onError: (e) => toast.error(e instanceof Error && e.message ? e.message : t('clipGen.failed')),
       },
     )
@@ -152,7 +201,13 @@ export function ClipGeneratorPanel({ projectId }: { projectId: string | null }) 
   return (
     <div className="flex flex-col gap-1.5">
       <span className="text-[11px] font-medium tracking-wide text-muted-foreground uppercase">{t('clipGen.title')}</span>
-      {!binding ? (
+      {!binding && item?.type === 'video' && clipsQ.isLoading ? (
+        // 选中的是 clip 块但全项目 clip 还没加载完 → 先显示识别中,避免闪一下「全部 clip」再切回其 takes
+        <div className="flex items-center gap-2 rounded-md border border-dashed px-2.5 py-3 text-xs text-muted-foreground">
+          <Loader2 className="size-4 shrink-0 animate-spin" />
+          {t('clipGen.resolving')}
+        </div>
+      ) : !binding ? (
         // 无选中(或选中非图片/clip 块)→ 全项目 clip 集合:浏览 / 加入编辑器(新块)/ 删除
         allClips.length === 0 ? (
           <div className="flex items-center gap-2 rounded-md border border-dashed px-2.5 py-3 text-xs text-muted-foreground">
@@ -161,9 +216,10 @@ export function ClipGeneratorPanel({ projectId }: { projectId: string | null }) 
           </div>
         ) : (
           <div className="flex flex-col gap-2">
-            {allClips.map((take) => (
+            {allClips.map((take, i) => (
               <MediaCard
                 key={take.clipId}
+                onOpen={(ev) => lightbox.open(i, ev)}
                 title={take.provider}
                 titleAttr={take.provider}
                 thumbnail={<Thumb url={take.url} kind="video" className="size-14" />}
@@ -178,16 +234,7 @@ export function ClipGeneratorPanel({ projectId }: { projectId: string | null }) 
                     >
                       {adding === take.clipId ? <Loader2 className="animate-spin" /> : <Plus />} {t('clipGen.addToEditor')}
                     </Button>
-                    <Button
-                      size="icon-xs"
-                      variant="ghost"
-                      className="text-muted-foreground hover:text-destructive"
-                      aria-label={t('clipGen.deleteTake')}
-                      disabled={del.isPending}
-                      onClick={() => del.mutate({ clipId: take.clipId, projectId })}
-                    >
-                      <Trash2 />
-                    </Button>
+                    <DeleteTakeButton clipId={take.clipId} projectId={projectId} />
                   </>
                 }
               >
@@ -238,17 +285,29 @@ export function ClipGeneratorPanel({ projectId }: { projectId: string | null }) 
                     ))}
                   </NativeSelect>
                 ) : (
-                  <Input type="number" className="h-8 w-16" min={durations?.min ?? 1} max={durations?.max ?? 60} value={durationSeconds} onChange={(e) => setDurationSeconds(Number(e.target.value))} />
+                  <Input
+                    type="number"
+                    className="h-8 w-16"
+                    min={durations?.min ?? 1}
+                    max={durations?.max ?? 60}
+                    value={durationSeconds}
+                    onChange={(e) =>
+                      setDurationSeconds(
+                        Math.min(durations?.max ?? 60, Math.max(durations?.min ?? 1, Number(e.target.value) || (durations?.min ?? 1))),
+                      )
+                    }
+                  />
                 )}
               </div>
             </div>
           </div>
           <Textarea rows={2} value={promptBody} onChange={(e) => setPromptBody(e.target.value)} placeholder={t('clipGen.promptPlaceholder')} />
+          {/* disable 用全局 generating(单槽任务,别块生成中也禁,免得覆盖丢任务);转圈/进度只画在源图匹配的块上 */}
           <Button size="sm" onClick={onGenerate} disabled={!provider?.configured || generating || gen.isPending}>
-            {generating || gen.isPending ? (
+            {(generating && genRef === binding.sourceImageRef) || gen.isPending ? (
               <>
                 <Loader2 className="animate-spin" /> {t('clipGen.generating')}
-                {task?.progress ? ` ${Math.round(task.progress * 100)}%` : ''}
+                {genRef === binding.sourceImageRef && task?.progress ? ` ${Math.round(task.progress * 100)}%` : ''}
               </>
             ) : (
               <>
@@ -261,6 +320,7 @@ export function ClipGeneratorPanel({ projectId }: { projectId: string | null }) 
           <div className="flex flex-col gap-2 pt-1">
             <MediaCard
               active={binding.current === PHOTO}
+              onOpen={(ev) => lightbox.open(0, ev)}
               title={t('clipGen.originalPhoto')}
               thumbnail={<Thumb url={binding.photoUrl} kind="image" className="size-14" />}
               footer={
@@ -275,12 +335,13 @@ export function ClipGeneratorPanel({ projectId }: { projectId: string | null }) 
               <span className="text-xs text-muted-foreground">{binding.photoName ?? ''}</span>
             </MediaCard>
 
-            {takes.map((take) => {
+            {takes.map((take, i) => {
               const isCurrent = binding.current === take.clipId
               return (
                 <MediaCard
                   key={take.clipId}
                   active={isCurrent}
+                  onOpen={(ev) => lightbox.open(i + 1, ev)}
                   title={take.provider}
                   titleAttr={take.provider}
                   thumbnail={<Thumb url={take.url} kind="video" className="size-14" />}
@@ -302,17 +363,7 @@ export function ClipGeneratorPanel({ projectId }: { projectId: string | null }) 
                           <Sparkles /> {t('clipGen.useTake')}
                         </Button>
                       )}
-                      <Button
-                        size="icon-xs"
-                        variant="ghost"
-                        className="text-muted-foreground hover:text-destructive"
-                        aria-label={t('clipGen.deleteTake')}
-                        title={isCurrent ? t('clipGen.cannotDeleteCurrent') : t('clipGen.deleteTake')}
-                        disabled={del.isPending || isCurrent}
-                        onClick={() => del.mutate({ clipId: take.clipId, projectId })}
-                      >
-                        <Trash2 />
-                      </Button>
+                      <DeleteTakeButton clipId={take.clipId} projectId={projectId} disabled={isCurrent} />
                     </>
                   }
                 >
@@ -330,6 +381,14 @@ export function ClipGeneratorPanel({ projectId }: { projectId: string | null }) 
           </div>
         </div>
       )}
+      {/* 灯箱常挂(base-ui 需从 open=false 起挂才播进场):点卡片缩略图放大预览/播放,对齐 RendersList */}
+      <MediaLightbox
+        items={viewerItems}
+        index={lightbox.index}
+        rect={lightbox.rect}
+        onIndexChange={lightbox.onIndexChange}
+        onClose={lightbox.close}
+      />
     </div>
   )
 }
