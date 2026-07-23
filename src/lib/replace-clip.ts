@@ -2,6 +2,7 @@
 // 三方关联的「替换」动作:照片块 ↔ 该图的多个 clip(take)之间就地切换。零改库 —— 只重写 items[itemId]。
 import type { EditorStarterAsset, EditorStarterItem, UndoableState } from '@gedatou/shared'
 import { editorStore } from '@/editor-app'
+import { rippleAfterResize } from '@/lib/ripple'
 
 const IMAGE_DEFAULT_SECONDS = 5
 
@@ -74,7 +75,16 @@ const replaceItemMedia = (itemId: string, media: Media): void => {
       media.kind === 'video'
         ? { ...base, type: 'video', assetId: media.assetId, crop: null, trimBefore: 0, playbackRate: 1, volume: 1, muted: false }
         : { ...base, type: 'image', assetId: media.assetId, crop: null }
-    return { ...prev, assets: { ...prev.assets, [media.assetId]: asset }, items: { ...prev.items, [itemId]: item } }
+    // ripple:换成不同时长的媒体会与后续块重叠(变长)或留出空白(变短)。把同轨、原块末尾之后的块
+    // 整体顺移 delta,消掉重叠/空白 —— 决策1「采用 clip 自己时长」的配套(纯计算见 lib/ripple)。
+    const items = rippleAfterResize(
+      { ...prev.items, [itemId]: item },
+      itemId,
+      prevItem.trackId,
+      prevItem.from + prevItem.durationInFrames,
+      durationInFrames - prevItem.durationInFrames,
+    )
+    return { ...prev, assets: { ...prev.assets, [media.assetId]: asset }, items }
   }, { commit: true })
 }
 
