@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef } from 'react'
+import { useEffect, useMemo, useRef, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useSearch } from '@tanstack/react-router'
 import { Loader2, UploadCloud } from 'lucide-react'
@@ -24,8 +24,10 @@ import { CoverInspectorPanel } from '@/components/overlay-inspector-panels'
 import { ClipGeneratorPanel } from '@/components/clip-generator/clip-generator-panel'
 import { RendersList } from '@/components/renders-list'
 import { COVER_KIND } from '@/overlays/overlay-design'
+import { FileDropOverlay, useFileDrag } from '@/components/file-drop'
 import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
+import { cn } from '@/lib/utils'
 import { useScrollFade } from '@/lib/use-scroll-fade'
 import { useProject, usePublishProject, useSaveProject } from '@/api/projects/projects'
 import { sonnerNotify } from '@/notify'
@@ -94,6 +96,27 @@ function PublishButton({ id }: { id: string | null }) {
       {publish.isPending ? <Loader2 className="size-4 animate-spin" /> : <UploadCloud className="size-4" />}
       {t('editorApp.publish')}
     </Button>
+  )
+}
+
+// 画布/时间轴的文件拖拽视觉盖层(观察模式):文件一进窗口即提示,实际导入仍由库处理(保留精确落点/时间轴蓝线)。
+// 不传 onDrop → useFileDrag 不 preventDefault → 不抢库挂在内层元素上的 drop;覆盖层 pointer-events-none 也不挡。
+function EditorDropZone({ className, children }: { className?: string; children: ReactNode }) {
+  const { t } = useTranslation()
+  const { windowDrag, over, dragProps } = useFileDrag()
+  return (
+    <div className={cn('relative', className)} {...dragProps}>
+      {children}
+      <FileDropOverlay
+        state={windowDrag}
+        over={over}
+        labels={{
+          dragHere: t('editorApp.dragToImport'),
+          dropToUpload: t('editorApp.dropToImport'),
+          dropInvalid: t('editorApp.dragToImport'),
+        }}
+      />
+    </div>
   )
 }
 
@@ -173,7 +196,9 @@ export function EditorApp() {
           </div>
         </Editor.Toolbar>
         <div className="flex min-h-0 flex-1">
-          <Canvas />
+          <EditorDropZone className="flex min-h-0 min-w-0 flex-1">
+            <Canvas />
+          </EditorDropZone>
           <aside className="w-[349px] shrink-0 border-l border-border text-sm">
             <ScrollArea viewportRef={inspectorViewportRef} className="h-full">
               {/* 包一层单 div:useScrollFade 的 ResizeObserver 观察 viewport.firstElementChild,
@@ -190,7 +215,9 @@ export function EditorApp() {
           </aside>
         </div>
         <PlaybackBar />
-        <Timeline />
+        <EditorDropZone className="shrink-0">
+          <Timeline />
+        </EditorDropZone>
       </EditorContainer>
     </EditorProvider>
   )
