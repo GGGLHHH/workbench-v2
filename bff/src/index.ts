@@ -5,6 +5,7 @@ import swagger from '@fastify/swagger';
 import { config } from './config';
 import { registerSessionRoutes } from './session';
 import { registerProjectRoutes } from './projects';
+import { registerClipRoutes } from './clips';
 
 const app = Fastify({ logger: true });
 
@@ -50,6 +51,7 @@ app.get('/openapi.yaml', async (_req, reply) => {
 // 产品面（BFF 自有；handler 内部用 typed client 调 xchangeai + 翻译）
 registerSessionRoutes(app);
 registerProjectRoutes(app);
+registerClipRoutes(app);
 
 // 编辑器 transport 契约：/api/* 透明代理到下游渲染服务（server/）。
 // 数据面（/media、/api/blob 的绝对 URL）由渲染服务直供，不经此——BFF 不搬运大文件。
