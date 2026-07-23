@@ -24,6 +24,7 @@
     "@fontsource-variable/geist": "^5.2.9",
     "@gedatou/editor": "link:../Remotion-demo/packages/editor",
     "@gedatou/shared": "link:../Remotion-demo/packages/shared",
+    "@google/genai": "^2.13.0",
     "@remotion/bundler": "4.0.491",
     "@remotion/captions": "4.0.491",
     "@remotion/gif": "4.0.491",

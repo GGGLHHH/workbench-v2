@@ -14,6 +14,9 @@ import { createUploadUrl, deleteObject, isSafeKey, writeStream } from './storage
 import { enqueueRender, tasks } from './renderer';
 import { isValidProjectId, readIndex, removeRender } from './render-index';
 import { transcribeAudio } from './whisper';
+import { getProviderOptions } from './clip/registry';
+import { clipTasks, enqueueClip } from './clip/service';
+import { listClips, removeClip } from './clip/clip-index';
 
 // bodyLimit: /render 携带完整工程 state；素材 PUT 走原始流（本地视频可较大）
 const app = Fastify({ logger: true, bodyLimit: 512 * 1024 * 1024 });
@@ -117,5 +120,75 @@ app.post('/api/captions', async (req, reply) => {
     await rm(tmpPath, { force: true });
   }
 });
+
+// —— AI 图生视频(clip 生成)。底层实现;归一处理由 BFF 的 /bff/clip* 负责。经 BFF /api/* 代理可达。——
+
+// provider 目录(实现视角:含 inputMode/configurationIssue)
+app.get('/api/clip-providers', async () => ({ providers: getProviderOptions() }));
+
+// 发起一个 clip 生成任务(单图单 clip)。prompt 已由 BFF 编译好,imageUrl 须绝对可达。
+app.post<{
+  Body: {
+    provider?: string;
+    imageUrl?: string;
+    prompt?: string;
+    durationSeconds?: number;
+    aspectRatio?: string;
+    referenceImageUrls?: string[];
+    // 绑定 + 元数据(齐全则生成成功后写本机 clip 索引)
+    projectId?: string;
+    sourceImageRef?: string;
+    referenceImageRefs?: string[];
+    promptBody?: string;
+    cameraMove?: string;
+    focusSubject?: string;
+    lightTransition?: string;
+  };
+}>('/api/generate-clip', async (req, reply) => {
+  const b = req.body ?? {};
+  if (!b.imageUrl || !b.prompt) return reply.code(400).send({ error: 'imageUrl and prompt required' });
+  const taskId = enqueueClip({
+    provider: b.provider,
+    imageUrl: b.imageUrl,
+    prompt: b.prompt,
+    durationSeconds: b.durationSeconds,
+    aspectRatio: b.aspectRatio,
+    referenceImageUrls: b.referenceImageUrls,
+    projectId: b.projectId,
+    sourceImageRef: b.sourceImageRef,
+    referenceImageRefs: b.referenceImageRefs,
+    promptBody: b.promptBody,
+    cameraMove: b.cameraMove,
+    focusSubject: b.focusSubject,
+    lightTransition: b.lightTransition,
+  });
+  return reply.code(202).send({ taskId });
+});
+
+// 轮询 clip 任务进度(镜像 /api/progress)
+app.post<{ Body: { taskId?: string } }>('/api/clip-progress', async (req, reply) => {
+  const task = clipTasks.get(req.body?.taskId ?? '');
+  if (!task) return reply.code(404).send({ error: 'unknown taskId' });
+  return task;
+});
+
+// 列某项目的 clip take(可按源图过滤 = 单图的多个视频)。绑定索引落本机 .data。
+app.get<{ Querystring: { projectId?: string; sourceImageRef?: string } }>('/api/clips', async (req, reply) => {
+  const projectId = req.query?.projectId;
+  if (!projectId || !isValidProjectId(projectId)) return reply.code(400).send({ error: 'projectId required' });
+  return { clips: await listClips(projectId, req.query?.sourceImageRef) };
+});
+
+// 删一条 take(索引记录 + 盘文件)
+app.delete<{ Params: { clipId: string }; Querystring: { projectId?: string } }>(
+  '/api/clips/:clipId',
+  async (req, reply) => {
+    const projectId = req.query?.projectId;
+    if (!projectId || !isValidProjectId(projectId)) return reply.code(400).send({ error: 'projectId required' });
+    const removed = await removeClip(projectId, req.params.clipId);
+    if (!removed) return reply.code(404).send({ error: 'unknown clipId' });
+    return { ok: true, clipId: req.params.clipId };
+  },
+);
 
 await app.listen({ port: config.port, host: '0.0.0.0' });

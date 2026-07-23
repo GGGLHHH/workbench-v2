@@ -1,4 +1,7 @@
 # 非 monorepo：此文件仅承载 pnpm 11 的项目级设置。
 # 放行 esbuild 构建脚本（tsx / @remotion/bundler 依赖），否则 pnpm exec/run 依赖检查会硬失败。
 allowBuilds:
+  # @google/genai + protobufjs 是纯 JS SDK,其 install 脚本非运行时必需 → 不放行(已验证真实 import 可加载)
+  '@google/genai': false
   esbuild: true
+  protobufjs: false
