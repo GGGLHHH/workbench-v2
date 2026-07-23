@@ -38,6 +38,7 @@
     "deleteTake": "删除候选",
     "confirmDelete": "确认删除?",
     "resolving": "识别绑定中…",
+    "awaitingUpload": "图片上传完成后可生成",
     "camera": {
       "auto": "自动",
       "slowPushIn": "缓慢推进",

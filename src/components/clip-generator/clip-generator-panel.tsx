@@ -171,8 +171,11 @@ export function ClipGeneratorPanel({ projectId }: { projectId: string | null }) 
 
   if (!projectId) return null
 
+  // 源图还是 blob:(本地上传尚未落到渲染服务)时,服务端 fetch 不到 → 禁止生成,等上传完成。
+  const awaitingUpload = !!binding && binding.photoUrl.startsWith('blob:')
+
   const onGenerate = () => {
-    if (!provider?.configured || !binding) return
+    if (!provider?.configured || !binding || awaitingUpload) return
     gen.mutate(
       {
         imageUrl: binding.photoUrl,
@@ -303,7 +306,7 @@ export function ClipGeneratorPanel({ projectId }: { projectId: string | null }) 
           </div>
           <Textarea rows={2} value={promptBody} onChange={(e) => setPromptBody(e.target.value)} placeholder={t('clipGen.promptPlaceholder')} />
           {/* disable 用全局 generating(单槽任务,别块生成中也禁,免得覆盖丢任务);转圈/进度只画在源图匹配的块上 */}
-          <Button size="sm" onClick={onGenerate} disabled={!provider?.configured || generating || gen.isPending}>
+          <Button size="sm" onClick={onGenerate} disabled={!provider?.configured || awaitingUpload || generating || gen.isPending}>
             {(generating && genRef === binding.sourceImageRef) || gen.isPending ? (
               <>
                 <Loader2 className="animate-spin" /> {t('clipGen.generating')}
@@ -315,6 +318,7 @@ export function ClipGeneratorPanel({ projectId }: { projectId: string | null }) 
               </>
             )}
           </Button>
+          {awaitingUpload ? <span className="text-[11px] text-muted-foreground">{t('clipGen.awaitingUpload')}</span> : null}
 
           {/* 形态列表:原图 + 各 take;点「用这条 / 换回原图」就地替换选中块,高亮当前 */}
           <div className="flex flex-col gap-2 pt-1">

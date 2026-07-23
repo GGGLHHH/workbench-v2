@@ -38,6 +38,7 @@
     "deleteTake": "Delete take",
     "confirmDelete": "Confirm delete?",
     "resolving": "Resolving…",
+    "awaitingUpload": "Available after the image finishes uploading",
     "camera": {
       "auto": "Auto",
       "slowPushIn": "Slow push-in",
