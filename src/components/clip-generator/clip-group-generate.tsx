@@ -4,16 +4,16 @@
 //   A 串成一条(进阶):首图=首帧、末图=末帧 → 一条穿越视频;仅支持关键帧的 provider(Kling/Luma;mock 供本地测)。
 //     顺序敏感 → A 模式可就地重排(◀▶)。
 // 先 AI 辅助看整组生成提示词(mode 决定语义),再生成。生成结果就地显示在结果区(命中本组图片的 clip)。
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Loader2, Sparkles, Wand2 } from 'lucide-react'
-import { Reorder } from 'motion/react'
 import { toast } from 'sonner'
 import { useQuery } from '@tanstack/react-query'
 import { invalidateProjectClips, useClipProviders, useClipTask, useGenerateClip, useProjectClips } from '@/api/clips'
 import { useClipPromptAssist } from '@/api/prompt-assist'
 import { getBffClip } from '@/generated/client'
 import { ClipTakeCard } from './clip-take-card'
+import { SortableClipsGrid } from '@/components/sortable-clips-grid'
 import { MediaLightbox, useMediaLightbox, type ViewerItem } from '@/components/media-lightbox'
 import { Thumb } from '@/components/media-card'
 import { Button } from '@/components/ui/button'
@@ -65,8 +65,14 @@ export function ClipGroupGenerate({
     setOrdered(images)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [refsKey])
-  const orderedRef = useRef(ordered)
-  orderedRef.current = ordered // 供 onDragEnd 读最新顺序(避免闭包旧值)
+  // 拖拽结束(dnd-kit 给出新 ref 顺序):按新顺序重排 ordered(生成读它:首=首帧、末=末帧;B 各生成一条),
+  // 并把 item id 顺序持久化(库写进组的 itemIds → 随项目 state 存,跨刷新)。
+  const handleReorder = (refs: string[]) => {
+    const byRef = new Map(ordered.map((img) => [img.ref, img]))
+    const next = refs.map((r) => byRef.get(r)).filter((img): img is GroupImage => !!img)
+    setOrdered(next)
+    onReorder?.(next.map((x) => x.itemId))
+  }
   const [cameraMove, setCameraMove] = useState('slowPushIn')
   const [promptBody, setPromptBody] = useState('')
   const [durationSeconds, setDurationSeconds] = useState(6)
@@ -87,6 +93,12 @@ export function ClipGroupGenerate({
   const viewerItems = useMemo<ViewerItem[]>(
     () => groupClips.map((c) => ({ url: c.url, kind: 'video' as const, name: c.provider })),
     [groupClips],
+  )
+  // 源图预览灯箱(与结果 clip 灯箱分开:源是图、结果是视频)。index 对齐 ordered。
+  const sourceLightbox = useMediaLightbox()
+  const sourceViewerItems = useMemo<ViewerItem[]>(
+    () => ordered.map((img) => ({ url: img.url, kind: 'image' as const, name: img.name })),
+    [ordered],
   )
 
   const gen = useGenerateClip()
@@ -186,6 +198,30 @@ export function ClipGroupGenerate({
     }
   }
 
+  // 单张源图瓦片(对齐资产网格:4 列 aspect-square + 点开预览)。sequence 标首/末帧、中间图变暗(v1 仅用首尾)。
+  const sourceTile = (img: GroupImage, i: number) => {
+    const seq = mode === 'sequence'
+    const tag = seq ? (i === 0 ? t('clipGen.groupFirst') : i === ordered.length - 1 ? t('clipGen.groupLast') : '') : ''
+    return (
+      <button
+        type="button"
+        onClick={(e) => sourceLightbox.open(i, e)}
+        title={img.name ?? undefined}
+        className={cn(
+          'relative aspect-square w-full overflow-hidden rounded-md ring-offset-background hover:ring-2 hover:ring-ring focus-visible:ring-2 focus-visible:ring-ring',
+          seq && !tag && 'opacity-40',
+        )}
+      >
+        <Thumb url={img.url} kind="image" className="size-full rounded-none" />
+        {tag ? (
+          <span className="pointer-events-none absolute inset-x-0 bottom-0 rounded-b-md bg-black/60 py-px text-center text-[9px] text-white">
+            {tag}
+          </span>
+        ) : null}
+      </button>
+    )
+  }
+
   return (
     <div className="flex flex-col gap-2">
       {/* 模式切换:B 各生成一条(默认) / A 串成一条(仅支持首尾帧的 provider) */}
@@ -211,31 +247,16 @@ export function ClipGroupGenerate({
         {mode === 'sequence' ? t('clipGen.groupSequenceHint', { total: ordered.length }) : t('clipGen.groupBatchHint', { total: ordered.length })}
       </span>
 
-      {/* 图片条:sequence 拖拽重排(顺序敏感,首/末=首/末帧,中间图变暗表示 v1 仅用首尾两帧);
-          batch 顺序无关、静态。Reorder 单轴 → 单行 + 横向滚动。 */}
+      {/* 源图:对齐资产网格(4 列 aspect-square,点开预览)。sequence 拖拽重排(@dnd-kit,首/末=首/末帧,中间图变暗
+          表示 v1 仅用首尾两帧);batch 顺序无关、静态。 */}
       {mode === 'sequence' ? (
-        <Reorder.Group axis="x" values={ordered} onReorder={setOrdered} className="flex gap-1.5 overflow-x-auto pb-1">
-          {ordered.map((img, i) => {
-            const tag = i === 0 ? t('clipGen.groupFirst') : i === ordered.length - 1 ? t('clipGen.groupLast') : ''
-            return (
-              <Reorder.Item
-                key={img.ref}
-                value={img}
-                onDragEnd={() => onReorder?.(orderedRef.current.map((x) => x.itemId))}
-                className={cn('relative shrink-0 cursor-grab touch-none select-none active:cursor-grabbing', !tag && 'opacity-40')}
-              >
-                <Thumb url={img.url} kind="image" className="pointer-events-none size-12 rounded-md" />
-                {tag ? (
-                  <span className="pointer-events-none absolute inset-x-0 bottom-0 rounded-b-md bg-black/60 py-px text-center text-[9px] text-white">{tag}</span>
-                ) : null}
-              </Reorder.Item>
-            )
-          })}
-        </Reorder.Group>
+        <SortableClipsGrid items={ordered} getKey={(img) => img.ref} renderTile={sourceTile} onReorder={handleReorder} />
       ) : (
-        <div className="flex flex-wrap gap-1.5">
-          {ordered.map((img) => (
-            <Thumb key={img.ref} url={img.url} kind="image" className="size-12 rounded-md" />
+        <div className="grid grid-cols-4 gap-1.5">
+          {ordered.map((img, i) => (
+            <div key={img.ref} className="group relative">
+              {sourceTile(img, i)}
+            </div>
           ))}
         </div>
       )}
@@ -316,6 +337,14 @@ export function ClipGroupGenerate({
         rect={lightbox.rect}
         onIndexChange={lightbox.onIndexChange}
         onClose={lightbox.close}
+      />
+      {/* 源图预览灯箱 */}
+      <MediaLightbox
+        items={sourceViewerItems}
+        index={sourceLightbox.index}
+        rect={sourceLightbox.rect}
+        onIndexChange={sourceLightbox.onIndexChange}
+        onClose={sourceLightbox.close}
       />
     </div>
   )
