@@ -384,6 +384,7 @@
     "commentEditFailed": "评论修改失败",
     "commentFailed": "评论失败",
     "assetDeleteFailed": "删除资产失败",
+    "assetReorderFailed": "排序失败",
     "logoUploadFailed": "logo 上传失败",
     "deliverFailed": "交付失败",
     "delivered": "成片已交付到平台",

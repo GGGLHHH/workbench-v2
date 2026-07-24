@@ -384,6 +384,7 @@
     "commentEditFailed": "Failed to edit comment",
     "commentFailed": "Failed to post comment",
     "assetDeleteFailed": "Failed to delete asset",
+    "assetReorderFailed": "Failed to reorder",
     "logoUploadFailed": "Logo upload failed",
     "deliverFailed": "Delivery failed",
     "delivered": "Final cut delivered to platform",

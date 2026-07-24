@@ -717,6 +717,48 @@ export function useDeleteProjectAsset() {
   })
 }
 
+// 排序项目 agent-asset(「Clips」组):上游无「移动」,BFF 用整表替换实现。乐观:把 detail.assets 里 agent 组
+// 按新 content_id 顺序就地重排(creator 组原位不动),失败回滚。按 content_id 定序(整表替换会重建 id)。
+// contentIds 必须是当前 agent 组的完整排列 —— BFF 校验集合一致,对不上回 409(并发增删)→ 回滚 + 提示。
+export function useReorderAgentAssets() {
+  const { t } = useTranslation()
+  return useMutation({
+    mutationFn: ({ projectId, contentIds }: { projectId: string; contentIds: string[] }) =>
+      requestJson<{ id: string }>(`/bff/projects/${projectId}/agent-assets/order`, {
+        method: 'PUT',
+        json: { contentIds },
+      }),
+    onMutate: async ({ projectId, contentIds }) => {
+      const key = queryKeys.projects.detail(projectId)
+      await queryClient.cancelQueries({ queryKey: key })
+      const previous = queryClient.getQueryData<BffProject>(key)
+      queryClient.setQueryData<BffProject>(key, (old) => {
+        if (!old?.detail?.assets) return old
+        const keyOf = (a: BffProjectAsset) => a.contentId ?? a.id
+        const rank = new Map(contentIds.map((c, i) => [c, i]))
+        const agents = old.detail.assets
+          .filter((a) => a.group === 'agent')
+          .slice()
+          .sort((x, y) => (rank.get(keyOf(x)) ?? 0) - (rank.get(keyOf(y)) ?? 0))
+        // 把重排后的 agent 组按原有 agent 槽位倒回扁平数组(creator 槽位保持不动)
+        let ai = 0
+        const assets = old.detail.assets.map((a) => (a.group === 'agent' ? agents[ai++] : a))
+        return { ...old, detail: { ...old.detail, assets } }
+      })
+      return { key, previous }
+    },
+    onError: (error, _vars, context) => {
+      if (context?.previous) queryClient.setQueryData(context.key, context.previous)
+      toast.error(error instanceof Error && error.message ? error.message : t('projects.assetReorderFailed'))
+    },
+    // 整表替换会重建每个 agent 资产的 id → 必须真重拉,否则缓存里的旧 id 一失效,点开预览拉 comments 就 404。
+    // order 只存 content_id(稳定),重拉后顺序照旧、只把对象/ id 换成新的。
+    onSettled: (_d, _e, { projectId }) => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.projects.detail(projectId), refetchType: 'active' })
+    },
+  })
+}
+
 // action → 目标状态:确定性的正向推进可乐观预测。revert(后端决定退到哪一步)不在此表,
 // 乐观期只显示 busy、不猜 status,落地时用服务端返回的权威 status 校正。
 const NEXT_STATUS: Record<string, string> = {

@@ -1051,6 +1051,42 @@ export const registerProjectRoutes = (app: FastifyInstance): void => {
     },
   )
 
+  // 排序 agent-assets(面板「Clips」组):上游无「移动」,只有整表替换 → 收前端给的完整顺序(content_id),
+  // 校验是当前集合的一个排列(数量相等、成员一致)再原样整表替换。整表替换保序 —— add/delete 也依赖这点。
+  // 按 content_id 定序(整表替换会重建 id,不能按 id)。集合对不上(有并发增删)→ 409,让前端重拉再排。
+  app.put<{ Params: { id: string }; Body: { contentIds: string[] } }>(
+    '/bff/projects/:id/agent-assets/order',
+    {
+      schema: {
+        operationId: 'reorderBffProjectAgentAssets',
+        tags: ['bff'],
+        params: idParams,
+        body: {
+          type: 'object',
+          required: ['contentIds'],
+          properties: { contentIds: { type: 'array', items: { type: 'string' }, minItems: 1 } },
+        },
+        response: {
+          200: { type: 'object', required: ['id'], properties: { id: { type: 'string' } } },
+        },
+      },
+    },
+    async (req, reply) => {
+      const { id } = req.params;
+      const auth = forwardAuth(req);
+      const proj = (await getProject({ path: { id } }, auth)) as unknown as {
+        agent_assets?: { content_id?: string }[];
+      };
+      const current = (proj.agent_assets ?? []).map((a) => a.content_id).filter((x): x is string => !!x);
+      const want = req.body.contentIds;
+      const isPermutation =
+        want.length === current.length && new Set(want).size === current.length && want.every((c) => current.includes(c));
+      if (!isPermutation) return reply.code(409).send({ error: 'order mismatch' });
+      await replaceProjectAgentAssets({ path: { id }, body: { agent_assets: want } }, auth);
+      return { id };
+    },
+  )
+
   // tag 目录(分页 + 搜索)。灯箱里的房间标签选择器无限下拉、按名字搜,从这里拉「已有」标签;
   // v2 不开放建标签,故只包 list、不包 create/unique。上游返回 PageResponseTagModel。
   app.get<{ Querystring: { search?: string; limit?: number; offset?: number } }>(
