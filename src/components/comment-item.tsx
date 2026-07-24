@@ -8,6 +8,7 @@ import type { BffComment } from '@/generated/api-types'
 import { useDeleteComment, useEditComment } from '@/api/projects/projects'
 import { Bubble, BubbleContent } from '@/components/ui/bubble'
 import { MediaLightbox, useMediaLightbox } from '@/components/media-lightbox'
+import { Thumb } from '@/components/media-card'
 import { cn, fileSize } from '@/lib/utils'
 import { Textarea } from '@/components/ui/textarea'
 
@@ -193,11 +194,7 @@ export function CommentItem({
               title={a.name ?? undefined}
               className="aspect-square overflow-hidden rounded ring-offset-background hover:ring-2 hover:ring-ring"
             >
-              {a.kind === 'video' ? (
-                <video src={`${a.url}#t=0.1`} muted playsInline preload="metadata" className="size-full object-cover" />
-              ) : (
-                <img src={a.url} alt="" loading="lazy" className="size-full object-cover" />
-              )}
+              <Thumb url={a.url} kind={a.kind} className="size-full rounded-none" />
             </button>
           ))}
           <MediaLightbox
