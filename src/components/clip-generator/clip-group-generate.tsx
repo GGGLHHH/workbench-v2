@@ -13,6 +13,7 @@ import { invalidateProjectClips, useClipProviders, useClipTask, useGenerateClip,
 import { useClipPromptAssist } from '@/api/prompt-assist'
 import { getBffClip } from '@/generated/client'
 import { ClipTakeCard } from './clip-take-card'
+import { PromptPresetButton } from './prompt-preset-button'
 import { SortableClipsGrid } from '@/components/sortable-clips-grid'
 import { MediaLightbox, useMediaLightbox, type ViewerItem } from '@/components/media-lightbox'
 import { Thumb } from '@/components/media-card'
@@ -307,6 +308,8 @@ export function ClipGroupGenerate({
         </Button>
       </div>
 
+      {/* 从预设目录挑一条 prompt 填入文本框(选完可再用 AI 改写)。 */}
+      <PromptPresetButton onPick={setPromptBody} />
       <Textarea rows={2} value={promptBody} onChange={(e) => setPromptBody(e.target.value)} placeholder={t('clipGen.promptPlaceholder')} />
       <Button size="sm" onClick={() => void onGenerate()} disabled={!provider?.configured || awaitingUpload || busy}>
         {busy ? (

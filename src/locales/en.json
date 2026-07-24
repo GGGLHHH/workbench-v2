@@ -26,6 +26,8 @@
     "modelPicks": "Model picks",
     "promptOptional": "Prompt (optional)",
     "promptPlaceholder": "Extra shot direction — the fidelity guardrail is always applied.",
+    "preset": "Preset",
+    "presetTitle": "Fill prompt from a preset",
     "assistGenerate": "AI draft",
     "assistImprove": "Refine",
     "assistDone": "Prompt drafted",

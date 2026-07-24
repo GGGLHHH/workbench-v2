@@ -17,6 +17,7 @@ import {
 import { useClipPromptAssist } from '@/api/prompt-assist'
 import { CAMERA_MOVES, ClipGroupGenerate, type GroupImage } from './clip-group-generate'
 import { ClipTakeCard, DeleteTakeButton } from './clip-take-card'
+import { PromptPresetButton } from './prompt-preset-button'
 import { replaceItemWithClip, revertItemToPhoto } from '@/lib/replace-clip'
 import { MediaCard, Thumb, duration as fmtDuration } from '@/components/media-card'
 import { MediaLightbox, useMediaLightbox, type ViewerItem } from '@/components/media-lightbox'
@@ -276,6 +277,8 @@ export function ClipGeneratorPanel({ projectId }: { projectId: string | null }) 
               </div>
             </div>
           </div>
+          {/* 从预设目录挑一条 prompt 填入文本框(选完可再用 AI 改写)。 */}
+          <PromptPresetButton onPick={setPromptBody} />
           {/* Prompt Assist:AI 生成(无视正文) / 改写(带现有正文,空则禁用)。源图未上传时禁用。 */}
           <div className="flex gap-1.5">
             <Button

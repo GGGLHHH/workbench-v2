@@ -26,6 +26,8 @@
     "modelPicks": "模型自定",
     "promptOptional": "提示词(可选)",
     "promptPlaceholder": "额外的镜头指示 —— 保真护栏始终自动附加。",
+    "preset": "预设",
+    "presetTitle": "从预设填入提示词",
     "assistGenerate": "AI 生成",
     "assistImprove": "改写",
     "assistDone": "已生成提示词",
