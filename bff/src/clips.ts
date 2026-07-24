@@ -10,7 +10,7 @@ import { compileClipPrompt, type CameraMove, type LightTransition } from './clip
 
 // 前端手里的图片引用 → server 能用的绝对 URL。/bff/content/<id> 现解析成 xchangeai 当前预签名地址
 // (公网,外部 provider 可直取);其余原样(须已公网可达)。
-const resolveImageUrl = async (url: string, auth: ReturnType<typeof forwardAuth>): Promise<string> => {
+export const resolveImageUrl = async (url: string, auth: ReturnType<typeof forwardAuth>): Promise<string> => {
   const m = url.match(/^\/bff\/content\/(.+)$/);
   if (!m) return url;
   const details = await getUpload({ path: { content_id: m[1] } }, auth).catch(() => null);

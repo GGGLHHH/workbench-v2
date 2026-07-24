@@ -466,6 +466,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/bff/clip-prompt-assist": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["assistBffClipPrompt"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -770,6 +786,17 @@ export interface components {
         BffClipList: {
             clips: components["schemas"]["BffClipRecord"][];
         };
+        BffPromptAssistRequest: {
+            imageUrl: string;
+            action?: string;
+            currentPrompt?: string;
+        };
+        BffPromptAssist: {
+            suggestedPrompt: string;
+            rationale: string;
+            warnings: string[];
+            mock: boolean;
+        };
     };
     responses: never;
     parameters: never;
@@ -818,6 +845,8 @@ export type BffGenerateClipRequest = components['schemas']['BffGenerateClipReque
 export type BffClipTask = components['schemas']['BffClipTask'];
 export type BffClipRecord = components['schemas']['BffClipRecord'];
 export type BffClipList = components['schemas']['BffClipList'];
+export type BffPromptAssistRequest = components['schemas']['BffPromptAssistRequest'];
+export type BffPromptAssist = components['schemas']['BffPromptAssist'];
 export type $defs = Record<string, never>;
 export interface operations {
     getBffSession: {
@@ -1675,6 +1704,30 @@ export interface operations {
                     "application/json": {
                         ok: boolean;
                     };
+                };
+            };
+        };
+    };
+    assistBffClipPrompt: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BffPromptAssistRequest"];
+            };
+        };
+        responses: {
+            /** @description Default Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BffPromptAssist"];
                 };
             };
         };

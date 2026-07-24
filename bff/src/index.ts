@@ -6,6 +6,7 @@ import { config } from './config';
 import { registerSessionRoutes } from './session';
 import { registerProjectRoutes } from './projects';
 import { registerClipRoutes } from './clips';
+import { registerClipPromptAssistRoutes } from './clip-prompt-assist';
 
 const app = Fastify({ logger: true });
 
@@ -52,6 +53,7 @@ app.get('/openapi.yaml', async (_req, reply) => {
 registerSessionRoutes(app);
 registerProjectRoutes(app);
 registerClipRoutes(app);
+registerClipPromptAssistRoutes(app);
 
 // 编辑器 transport 契约：/api/* 透明代理到下游渲染服务（server/）。
 // 数据面（/media、/api/blob 的绝对 URL）由渲染服务直供，不经此——BFF 不搬运大文件。

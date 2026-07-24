@@ -3,6 +3,9 @@
 
 import type { AddBffProjectAgentAssetsPath, ChangeBffProjectStatusPath, CompleteBffUploadPath, CreateBffAssetCommentPath, CreateBffProjectCommentPath, DeleteBffClipPath, DeleteBffCommentPath, DeleteBffProjectAssetPath, DeliverBffProjectPath, GetBffClipPath, GetBffContentPath, GetBffProjectAnalyticsPath, GetBffProjectPath, ListBffAssetCommentsPath, ListBffProjectCommentsPath, PublishBffProjectPath, SaveBffAssetTagsPath, SaveBffCommentPath, SaveBffProjectAssigneePath, SaveBffProjectMetaPath, SaveBffProjectPath, SaveBffProjectVisibilityPath } from "./api-types";
 // 
+export function assistBffClipPrompt(): string {
+    return "/bff/clip-prompt-assist";
+}
 export function listBffClipProviders(): string {
     return "/bff/clip-providers";
 }

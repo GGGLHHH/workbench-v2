@@ -4,7 +4,7 @@
 // 高亮当前形态。零改库:替换只重写 items[itemId](见 lib/replace-clip)。take 卡片对齐 RendersList 的 MediaCard。
 import { useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Check, ImagePlus, Loader2, Plus, RotateCcw, Sparkles, Trash2 } from 'lucide-react'
+import { Check, ImagePlus, Loader2, Plus, RotateCcw, Sparkles, Trash2, Wand2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { useEditor } from '@gedatou/editor'
 import {
@@ -15,6 +15,7 @@ import {
   useGenerateClip,
   useProjectClips,
 } from '@/api/clips'
+import { useClipPromptAssist } from '@/api/prompt-assist'
 import { addProjectAssetToEditor } from '@/lib/add-to-editor'
 import { replaceItemWithClip, revertItemToPhoto } from '@/lib/replace-clip'
 import { MediaCard, Thumb, duration as fmtDuration } from '@/components/media-card'
@@ -138,6 +139,7 @@ export function ClipGeneratorPanel({ projectId }: { projectId: string | null }) 
   }, [adjustable, durationValues, durationSeconds])
 
   const gen = useGenerateClip()
+  const assist = useClipPromptAssist()
   const [taskId, setTaskId] = useState<string | null>(null)
   // 记住这次生成是「给哪张源图」的:任务 id 是组件级单槽,若不记录,切到别的块后转圈会画错块上。
   const [genRef, setGenRef] = useState<string | null>(null)
@@ -191,6 +193,24 @@ export function ClipGeneratorPanel({ projectId }: { projectId: string | null }) 
           setGenRef(binding.sourceImageRef)
         },
         onError: (e) => toast.error(e instanceof Error && e.message ? e.message : t('clipGen.failed')),
+      },
+    )
+  }
+
+  // Prompt Assist:AI 生成/改写运镜正文。generate 无视现有正文;improve 带上当前正文精修(空则禁用)。
+  // 成功即填回文本框;mock(未配 GEMINI_API_KEY)与 warnings 走提示。源图为 blob(未上传)时禁用。
+  const onAssist = (action: 'generate' | 'improve') => {
+    if (!binding || awaitingUpload) return
+    assist.mutate(
+      { imageUrl: binding.photoUrl, action, currentPrompt: action === 'improve' ? promptBody.trim() : undefined },
+      {
+        onSuccess: (res) => {
+          setPromptBody(res.suggestedPrompt)
+          if (res.warnings.length) toast.warning(res.warnings[0])
+          else if (res.mock) toast.message(t('clipGen.assistMock'))
+          else toast.success(t('clipGen.assistDone'))
+        },
+        onError: (e) => toast.error(e instanceof Error && e.message ? e.message : t('clipGen.assistFailed')),
       },
     )
   }
@@ -303,6 +323,29 @@ export function ClipGeneratorPanel({ projectId }: { projectId: string | null }) 
                 )}
               </div>
             </div>
+          </div>
+          {/* Prompt Assist:AI 生成(无视正文) / 改写(带现有正文,空则禁用)。源图未上传时禁用。 */}
+          <div className="flex gap-1.5">
+            <Button
+              size="xs"
+              variant="outline"
+              className="flex-1"
+              disabled={awaitingUpload || assist.isPending}
+              onClick={() => onAssist('generate')}
+            >
+              {assist.isPending && assist.variables?.action !== 'improve' ? <Loader2 className="animate-spin" /> : <Wand2 />}
+              {t('clipGen.assistGenerate')}
+            </Button>
+            <Button
+              size="xs"
+              variant="ghost"
+              className="flex-1 text-muted-foreground"
+              disabled={awaitingUpload || assist.isPending || !promptBody.trim()}
+              onClick={() => onAssist('improve')}
+            >
+              {assist.isPending && assist.variables?.action === 'improve' ? <Loader2 className="animate-spin" /> : <Sparkles />}
+              {t('clipGen.assistImprove')}
+            </Button>
           </div>
           <Textarea rows={2} value={promptBody} onChange={(e) => setPromptBody(e.target.value)} placeholder={t('clipGen.promptPlaceholder')} />
           {/* disable 用全局 generating(单槽任务,别块生成中也禁,免得覆盖丢任务);转圈/进度只画在源图匹配的块上 */}

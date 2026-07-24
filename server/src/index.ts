@@ -17,6 +17,7 @@ import { transcribeAudio } from './whisper';
 import { getProviderOptions } from './clip/registry';
 import { clipTasks, enqueueClip } from './clip/service';
 import { listClips, removeClip } from './clip/clip-index';
+import { generatePromptAssist } from './clip/prompt-assist';
 
 // bodyLimit: /render 携带完整工程 state；素材 PUT 走原始流（本地视频可较大）
 const app = Fastify({ logger: true, bodyLimit: 512 * 1024 * 1024 });
@@ -164,6 +165,21 @@ app.post<{
   });
   return reply.code(202).send({ taskId });
 });
+
+// Prompt Assist:给源图生成/改写运镜 promptBody。mock 优先(无 GEMINI_API_KEY 即返回确定性 stub)。
+app.post<{ Body: { imageUrl?: string; action?: string; currentPrompt?: string } }>(
+  '/api/prompt-assist',
+  async (req, reply) => {
+    const b = req.body ?? {};
+    if (!b.imageUrl) return reply.code(400).send({ error: 'imageUrl required' });
+    const action = b.action === 'improve' ? 'improve' : 'generate';
+    try {
+      return await generatePromptAssist({ imageUrl: b.imageUrl, action, currentPrompt: b.currentPrompt });
+    } catch (e) {
+      return reply.code(502).send({ error: e instanceof Error ? e.message : 'prompt assist failed' });
+    }
+  },
+);
 
 // 轮询 clip 任务进度(镜像 /api/progress)
 app.post<{ Body: { taskId?: string } }>('/api/clip-progress', async (req, reply) => {
