@@ -10,6 +10,7 @@ import { createProvider, formatProviderError, getProviderKeyframeSupport, getPro
 import { resolveImageInput, resolveReferenceImages } from './image-input';
 import { appendClip } from './clip-index';
 import { probeVideo, type ProbeResult } from './probe';
+import { createQueue } from '../task-queue';
 
 export const clipTasks = new Map<string, ClipTask>();
 
@@ -41,15 +42,7 @@ export type ClipServiceDeps = {
   probe?: (filePath: string) => Promise<ProbeResult>;
 };
 
-// ponytail: 内存 FIFO 单 worker,任务表随进程重启丢失;要持久化/并发时换正式队列。
-const queue: (() => Promise<void>)[] = [];
-let running = false;
-const pump = async (): Promise<void> => {
-  if (running) return;
-  running = true;
-  while (queue.length > 0) await queue.shift()!();
-  running = false;
-};
+const queue = createQueue();
 
 export const enqueueClip = (input: EnqueueClipInput, deps: ClipServiceDeps = {}): string => {
   const create = deps.createProvider ?? ((name: string) => createProvider(name));
@@ -138,6 +131,5 @@ export const enqueueClip = (input: EnqueueClipInput, deps: ClipServiceDeps = {})
       await rm(outputPath, { force: true });
     }
   });
-  void pump();
   return taskId;
 };

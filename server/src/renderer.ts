@@ -7,6 +7,7 @@ import { ensureBrowser, renderMedia, selectComposition } from '@remotion/rendere
 import { newId, sanitizeFileName, type UndoableState } from '@gedatou/shared';
 import { writeBuffer } from './storage';
 import { appendRender, isValidProjectId } from './render-index';
+import { createQueue } from './task-queue';
 
 // 渲染入口：v2 自己的 render-entry.tsx（先注册业务 custom item 渲染器，再 registerRoot 库的
 // CompositionRoot，id="Main"）——bundle 库内 entry 会缺 lowerThird/cover 渲染器。
@@ -31,15 +32,7 @@ const getServeUrl = (): Promise<string> => {
   return serveUrlPromise;
 };
 
-// ponytail: 内存 FIFO 单 worker，任务表随进程重启丢失；要持久化/并发时换 BullMQ
-const queue: (() => Promise<void>)[] = [];
-let running = false;
-const pump = async (): Promise<void> => {
-  if (running) return;
-  running = true;
-  while (queue.length > 0) await queue.shift()!();
-  running = false;
-};
+const queue = createQueue();
 
 export const enqueueRender = (
   state: UndoableState,
@@ -98,6 +91,5 @@ export const enqueueRender = (
       await fs.rm(outputLocation, { force: true });
     }
   });
-  void pump();
   return taskId;
 };
