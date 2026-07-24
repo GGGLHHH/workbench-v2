@@ -16,6 +16,7 @@ import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { cn } from '@/lib/utils'
 import { useScrollFade } from '@/lib/use-scroll-fade'
+import { useSelectedItemsCache } from '@/components/select/use-selected-items-cache'
 
 // 可搜索的无限列表内容(单/多选)。对齐 basereact 的组合式设计:底座零文案、零 i18n,状态与底部条
 // 都走 children 插槽(context 驱动、按状态自渲染),文案由上层业务组件注入。相较 xchangeai-web 的
@@ -264,17 +265,12 @@ export function InfiniteSelect<T>(props: InfiniteSelectProps<T>) {
     trigger: '__infinite_select_no_op__',
   })
 
-  const selectedItemsCacheRef = useRef<Map<string, T>>(new Map())
-
-  if (isMultiple) {
-    const selectedIds = (selectedValue as string[] | undefined) ?? []
-    for (const item of items) {
-      const id = getOption(item).id
-      if (selectedIds.includes(id)) {
-        selectedItemsCacheRef.current.set(id, item)
-      }
-    }
-  }
+  // 多选时缓存见过的选中项(单选不需要,传空 selectedIds 即空转);toggle 时在 handleSelect 里直接增删这个 Map。
+  const { cacheRef: selectedItemsCacheRef } = useSelectedItemsCache(
+    items,
+    getOption,
+    isMultiple ? ((selectedValue as string[] | undefined) ?? []) : [],
+  )
 
   const [searchDraft, setSearchDraft] = useControllableValue<string>(
     { onSearchInputValueChange, searchInputValue },

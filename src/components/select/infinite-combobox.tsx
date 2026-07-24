@@ -12,6 +12,7 @@ import {
   type InfiniteSelectOption,
 } from '@/components/select/infinite-select'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
+import { useSelectedItemsCache } from '@/components/select/use-selected-items-cache'
 import { cn } from '@/lib/utils'
 
 // 无限下拉组合框:受控 Popover 包住 InfiniteSelect + 防抖搜索 + 「关闭时一次性提交」。对齐 basereact:
@@ -230,7 +231,6 @@ export function InfiniteCombobox<T>(props: InfiniteComboboxProps<T>) {
   const draftIdsRef = useRef<string[]>([])
   const hasChangedRef = useRef(false)
   const prevOpenRef = useRef<boolean | undefined>(undefined)
-  const selectedItemsCacheRef = useRef<Map<string, T>>(new Map())
 
   const effectiveSelectedValue = deferredEnabled ? draftIds : selectedValue
   const selectedIds = isMultiple
@@ -239,16 +239,7 @@ export function InfiniteCombobox<T>(props: InfiniteComboboxProps<T>) {
       ? [effectiveSelectedValue as string]
       : []
 
-  for (const item of list.items) {
-    const id = getOption(item).id
-    if (selectedIds.includes(id)) {
-      selectedItemsCacheRef.current.set(id, item)
-    }
-  }
-
-  const selectedItems = selectedIds
-    .map((id) => selectedItemsCacheRef.current.get(id))
-    .filter((entry): entry is T => entry !== undefined)
+  const { selectedItems } = useSelectedItemsCache(list.items, getOption, selectedIds)
 
   useEffect(() => {
     const wasOpen = prevOpenRef.current
