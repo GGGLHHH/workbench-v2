@@ -10,14 +10,10 @@ import {
   type InfiniteComboboxChildren,
 } from '@/components/select/infinite-combobox'
 import {
-  InfiniteSelectEmpty,
-  InfiniteSelectError,
-  InfiniteSelectLoading,
-  InfiniteSelectLoadingMore,
-  InfiniteSelectRetry,
   type ControllableSelectionProps,
   type InfiniteSelectOption,
 } from '@/components/select/infinite-select'
+import { InfiniteSelectStateSlots } from '@/components/select/infinite-select-state-slots'
 
 // tag 专用 select:tag 目录查询 + InfiniteCombobox 基座。对齐 basereact 的分层:底座零文案,
 // 状态文案(空/加载/错误)在本业务层注入(v2 无 i18n,直接中文);slots 由调用方追加(如 footer)。
@@ -99,15 +95,7 @@ export function TagInfiniteSelect(props: TagInfiniteSelectProps) {
 
   // 内置中文状态插槽(始终渲染,按状态自显示);调用方 slots 追加在其后(如 footer)。
   const stateSlots = (
-    <>
-      <InfiniteSelectEmpty>{t('tagSelect.empty')}</InfiniteSelectEmpty>
-      <InfiniteSelectLoading>{t('common.loading')}</InfiniteSelectLoading>
-      <InfiniteSelectLoadingMore>{t('tagSelect.loadingMore')}</InfiniteSelectLoadingMore>
-      <InfiniteSelectError>
-        {t('common.loadFailed')}
-        <InfiniteSelectRetry>{t('common.retry')}</InfiniteSelectRetry>
-      </InfiniteSelectError>
-    </>
+    <InfiniteSelectStateSlots emptyText={t('tagSelect.empty')} loadingMoreText={t('tagSelect.loadingMore')} />
   )
 
   return (

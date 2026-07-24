@@ -10,14 +10,10 @@ import {
   type InfiniteComboboxChildren,
 } from '@/components/select/infinite-combobox'
 import {
-  InfiniteSelectEmpty,
-  InfiniteSelectError,
-  InfiniteSelectLoading,
-  InfiniteSelectLoadingMore,
-  InfiniteSelectRetry,
   type ControllableSelectionProps,
   type InfiniteSelectOption,
 } from '@/components/select/infinite-select'
+import { InfiniteSelectStateSlots } from '@/components/select/infinite-select-state-slots'
 
 // 预设 prompt 专用 select:预设目录查询 + InfiniteCombobox 基座。与 TagInfiniteSelect 同构 ——
 // 底座零文案,状态文案(空/加载/错误)在本业务层注入(v2 无 i18n,直接中文);slots 由调用方追加。
@@ -94,15 +90,10 @@ export function PromptPresetInfiniteSelect(props: PromptPresetInfiniteSelectProp
   const selectionProps = getInfiniteComboboxSelectionProps<BffPromptPreset>(props)
 
   const stateSlots = (
-    <>
-      <InfiniteSelectEmpty>{t('promptPresetSelect.empty')}</InfiniteSelectEmpty>
-      <InfiniteSelectLoading>{t('common.loading')}</InfiniteSelectLoading>
-      <InfiniteSelectLoadingMore>{t('promptPresetSelect.loadingMore')}</InfiniteSelectLoadingMore>
-      <InfiniteSelectError>
-        {t('common.loadFailed')}
-        <InfiniteSelectRetry>{t('common.retry')}</InfiniteSelectRetry>
-      </InfiniteSelectError>
-    </>
+    <InfiniteSelectStateSlots
+      emptyText={t('promptPresetSelect.empty')}
+      loadingMoreText={t('promptPresetSelect.loadingMore')}
+    />
   )
 
   return (

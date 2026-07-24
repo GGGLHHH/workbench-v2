@@ -5,14 +5,8 @@ import { ChevronsUpDown } from 'lucide-react'
 import type { BffOption } from '@/generated/api-types'
 import { useInfiniteMemberOptions, type MemberKind } from '@/api/member-options'
 import { InfiniteCombobox, useInfiniteComboboxState } from '@/components/select/infinite-combobox'
-import {
-  InfiniteSelectEmpty,
-  InfiniteSelectError,
-  InfiniteSelectLoading,
-  InfiniteSelectLoadingMore,
-  InfiniteSelectRetry,
-  type InfiniteSelectOption,
-} from '@/components/select/infinite-select'
+import { type InfiniteSelectOption } from '@/components/select/infinite-select'
+import { InfiniteSelectStateSlots } from '@/components/select/infinite-select-state-slots'
 import { cn } from '@/lib/utils'
 
 // 成员单选(agency/agent/assignee):自带触发器的无限下拉,替代原生 <select>。value=id,onChange 回传选中项
@@ -55,15 +49,7 @@ export function MemberInfiniteSelect({
       onChange={onChange}
       searchPlaceholder={t('memberSelect.searchPlaceholder')}
       slots={
-        <>
-          <InfiniteSelectEmpty>{t('memberSelect.empty')}</InfiniteSelectEmpty>
-          <InfiniteSelectLoading>{t('common.loading')}</InfiniteSelectLoading>
-          <InfiniteSelectLoadingMore>{t('memberSelect.loadingMore')}</InfiniteSelectLoadingMore>
-          <InfiniteSelectError>
-            {t('common.loadFailed')}
-            <InfiniteSelectRetry>{t('common.retry')}</InfiniteSelectRetry>
-          </InfiniteSelectError>
-        </>
+        <InfiniteSelectStateSlots emptyText={t('memberSelect.empty')} loadingMoreText={t('memberSelect.loadingMore')} />
       }
       state={combobox}
       value={value || undefined}
