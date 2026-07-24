@@ -1,7 +1,7 @@
-import { useState } from 'react'
 import { ChevronDown, Loader2 } from 'lucide-react'
 
 import { STATUS_ACTIONS, STATUS_STYLE, type StatusAction } from '@/components/project-nav/constants'
+import { useConfirmAction } from '@/lib/use-confirm-action'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -23,14 +23,14 @@ export function ProjectStatusMenu({
 }) {
   const actions: StatusAction[] = STATUS_ACTIONS[status] ?? []
   // 待确认的动作。菜单关闭即清空 —— 下次打开必须从头再点一次,不留半截状态。
-  const [pendingConfirm, setPendingConfirm] = useState<string | null>(null)
+  const confirm = useConfirmAction<string>()
   const pill = cn(
     'inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-xs font-medium capitalize',
     STATUS_STYLE[status] ?? 'bg-muted text-muted-foreground',
   )
   if (actions.length === 0) return <span className={pill}>{statusLabel(status)}</span>
   return (
-    <DropdownMenu onOpenChange={(open) => !open && setPendingConfirm(null)}>
+    <DropdownMenu onOpenChange={(open) => !open && confirm.disarm()}>
       <DropdownMenuTrigger disabled={busy} className={cn(pill, 'cursor-pointer outline-none disabled:opacity-60')}>
         {busy ? <Loader2 className="size-3 animate-spin" /> : null}
         {statusLabel(status)}
@@ -38,7 +38,7 @@ export function ProjectStatusMenu({
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start" className="min-w-44">
         {actions.map((a) => {
-          const confirming = pendingConfirm === a.action
+          const confirming = confirm.armed === a.action
           return (
             <DropdownMenuItem
               key={a.action}
@@ -51,12 +51,13 @@ export function ProjectStatusMenu({
                 a.primary && 'font-medium text-foreground',
               )}
               onClick={() => {
-                if (a.confirm && !confirming) {
-                  setPendingConfirm(a.action)
-                  return
+                // 需确认的动作走 armed-then-fire;其余立即执行(顺带清掉任何半截确认)
+                if (a.confirm) {
+                  confirm.trigger(a.action, () => onAction(a.action))
+                } else {
+                  confirm.disarm()
+                  onAction(a.action)
                 }
-                setPendingConfirm(null)
-                onAction(a.action)
               }}
             >
               {confirming ? a.confirm : a.label}

@@ -10,6 +10,7 @@ import { addProjectAssetToEditor } from '@/lib/add-to-editor'
 import { AssetViewer } from '@/components/asset-viewer'
 import { useMediaLightbox } from '@/components/media-lightbox'
 import { cn } from '@/lib/utils'
+import { useConfirmAction } from '@/lib/use-confirm-action'
 import { Thumb } from '@/components/media-card'
 import { SortableClipsGrid } from '@/components/sortable-clips-grid'
 
@@ -50,8 +51,8 @@ export function AssetGrid({ projectId, assets }: { projectId: string; assets: No
   const saveDesc = useSaveAssetDescription()
   const del = useDeleteProjectAsset()
   const reorder = useReorderAgentAssets()
-  // 删除首点转确认(红 + 勾),再点才真删 —— 与状态菜单/评论删除同套二次确认,不用 window.confirm
-  const [confirmDel, setConfirmDel] = useState<string | null>(null)
+  // 删除首点转确认(红 + 勾),再点才真删 —— 与状态菜单/评论删除同套二次确认(useConfirmAction),不用 window.confirm
+  const confirm = useConfirmAction<string>()
   const [adding, setAdding] = useState<string | null>(null)
   type Asset = NonNullable<BffProjectDetail['assets']>[number]
   // content_id 稳定键:整表替换会重建资产 id,排序/归属一律按它(见 useReorderAgentAssets / useDeleteProjectAsset)
@@ -115,27 +116,22 @@ export function AssetGrid({ projectId, assets }: { projectId: string; assets: No
       {/* hover 显现:删除该资产(整表替换实现)。首点转确认,再点真删;失焦即撤销确认。 */}
       <button
         type="button"
-        aria-label={confirmDel === a.id ? t('projectNav.confirmDeleteAsset') : t('projectNav.deleteAsset')}
-        title={confirmDel === a.id ? t('projectNav.confirmDeleteAsset') : t('projectNav.deleteAsset')}
+        aria-label={confirm.armed === a.id ? t('projectNav.confirmDeleteAsset') : t('projectNav.deleteAsset')}
+        title={confirm.armed === a.id ? t('projectNav.confirmDeleteAsset') : t('projectNav.deleteAsset')}
         disabled={del.isPending && del.variables?.assetKey === keyOf(a)}
         onClick={(e) => {
           e.stopPropagation()
-          if (confirmDel === a.id) {
-            setConfirmDel(null)
-            del.mutate({ projectId, assetKey: keyOf(a) })
-          } else {
-            setConfirmDel(a.id)
-          }
+          confirm.trigger(a.id, () => del.mutate({ projectId, assetKey: keyOf(a) }))
         }}
-        onBlur={() => setConfirmDel(null)}
+        onBlur={() => confirm.disarm()}
         className={cn(
           'absolute top-1 right-1 inline-flex size-6 items-center justify-center rounded text-white opacity-0 shadow transition-opacity group-hover:opacity-100 focus-visible:opacity-100 disabled:opacity-60',
-          confirmDel === a.id ? 'bg-red-600/90 opacity-100 hover:bg-red-600' : 'bg-black/60 hover:bg-black/80',
+          confirm.armed === a.id ? 'bg-red-600/90 opacity-100 hover:bg-red-600' : 'bg-black/60 hover:bg-black/80',
         )}
       >
         {del.isPending && del.variables?.assetKey === keyOf(a) ? (
           <Loader2 className="size-3.5 animate-spin" />
-        ) : confirmDel === a.id ? (
+        ) : confirm.armed === a.id ? (
           <Check className="size-3.5" />
         ) : (
           <Trash2 className="size-3.5" />
