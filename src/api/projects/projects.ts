@@ -43,13 +43,24 @@ import {
   saveBffProjectVisibility,
 } from '@/generated/client'
 import i18n from '@/i18n'
-import { ApiError, requestJson } from '@/lib/api-client'
+import { ApiError, extractErrorMessage, requestJson } from '@/lib/api-client'
 import { queryClient } from '@/lib/query-client'
 import { queryKeys, type ProjectListParams } from '@/lib/query-keys'
 
 export const PROJECTS_PAGE_SIZE = 20
 
 const isAbort = (error: unknown) => error instanceof ApiError && error.kind === 'abort'
+
+// 乐观回滚 + 错误提示:onMutate 返回 { key, previous } 的 mutation 共用这一 onError 尾。
+// 只收敛最重复的尾;onMutate 的 cancel+snapshot 已足够短,不抽(抽出反多一层间接)。
+function rollbackOnError(
+  context: { key: readonly unknown[]; previous: unknown } | undefined,
+  error: unknown,
+  fallback: string,
+) {
+  if (context?.previous !== undefined) queryClient.setQueryData(context.key, context.previous)
+  toast.error(extractErrorMessage(error, fallback))
+}
 
 const pageQuery = (params: ProjectListParams, index: number) => ({
   queryKey: queryKeys.projects.page(params, index),
@@ -177,10 +188,7 @@ export function useSaveProjectMeta() {
       )
       void queryClient.invalidateQueries({ queryKey: queryKeys.projects.lists(), refetchType: 'none' })
     },
-    onError: (error, _vars, context) => {
-      if (context?.previous) queryClient.setQueryData(context.key, context.previous)
-      toast.error(error instanceof Error && error.message ? error.message : t('projects.saveFailed'))
-    },
+    onError: (error, _vars, context) => rollbackOnError(context, error, t('projects.saveFailed')),
   })
 }
 
@@ -329,7 +337,7 @@ export function useCreateComment(entity: CommentEntity) {
     onError: (error, { id }, context) => {
       if (context?.previous) queryClient.setQueryData(context.key, context.previous)
       adjustCommentCount(entity, id, -1) // 回滚角标
-      toast.error(error instanceof Error && error.message ? error.message : t('projects.commentFailed'))
+      toast.error(extractErrorMessage(error, t('projects.commentFailed')))
     },
     // 计数挂在 detail(资产评论角标也在 detail.assets 里)→ 标记过期,下次展开再对账,
     // 不立刻重拉:详情带全部 asset url,重拉会让缩略图闪一遍。
@@ -422,10 +430,7 @@ export function useEditComment(entity: CommentEntity) {
         patchComments(old, (items) => items.map((c) => (c.id === commentId ? updated : c))),
       )
     },
-    onError: (error, _vars, context) => {
-      if (context?.previous) queryClient.setQueryData(context.key, context.previous)
-      toast.error(error instanceof Error && error.message ? error.message : t('projects.commentEditFailed'))
-    },
+    onError: (error, _vars, context) => rollbackOnError(context, error, t('projects.commentEditFailed')),
   })
 }
 
@@ -447,7 +452,7 @@ export function useDeleteComment(entity: CommentEntity) {
     onError: (error, { entityId }, context) => {
       if (context?.previous) queryClient.setQueryData(context.key, context.previous)
       adjustCommentCount(entity, entityId, 1) // 回滚角标
-      toast.error(error instanceof Error && error.message ? error.message : t('projects.commentDeleteFailed'))
+      toast.error(extractErrorMessage(error, t('projects.commentDeleteFailed')))
     },
     onSettled: (_d, _e, { entityId }) =>
       void queryClient.invalidateQueries({
@@ -473,9 +478,7 @@ export function useSaveProjectAssignee() {
       // 指派变了 → 未指派/我的 计数随之变(计数 key 挂在 stats 前缀下,一并失效)
       void queryClient.invalidateQueries({ queryKey: queryKeys.projects.stats() })
     },
-    onError: (error) => {
-      toast.error(error instanceof Error && error.message ? error.message : t('projects.assignFailed'))
-    },
+    onError: (error) => toast.error(extractErrorMessage(error, t('projects.assignFailed'))),
   })
 }
 
@@ -517,10 +520,7 @@ export function useSaveAssetTags() {
           : old,
       )
     },
-    onError: (error, _vars, context) => {
-      if (context?.previous) queryClient.setQueryData(context.key, context.previous)
-      toast.error(error instanceof Error && error.message ? error.message : t('projects.tagSaveFailed'))
-    },
+    onError: (error, _vars, context) => rollbackOnError(context, error, t('projects.tagSaveFailed')),
   })
 }
 
@@ -551,10 +551,7 @@ export function useSaveAssetDescription() {
       )
       return { key, previous }
     },
-    onError: (error, _vars, context) => {
-      if (context?.previous) queryClient.setQueryData(context.key, context.previous)
-      toast.error(error instanceof Error && error.message ? error.message : t('projects.descriptionSaveFailed'))
-    },
+    onError: (error, _vars, context) => rollbackOnError(context, error, t('projects.descriptionSaveFailed')),
   })
 }
 
@@ -573,10 +570,7 @@ export function useSaveProjectVisibility() {
       )
       return { key, previous }
     },
-    onError: (error, _vars, context) => {
-      if (context?.previous) queryClient.setQueryData(context.key, context.previous)
-      toast.error(error instanceof Error && error.message ? error.message : t('projects.visibilityUpdateFailed'))
-    },
+    onError: (error, _vars, context) => rollbackOnError(context, error, t('projects.visibilityUpdateFailed')),
   })
 }
 
@@ -705,7 +699,7 @@ export function useUploadAgentAssets() {
       if (failed) toast.error(t('projects.agentAssetsPartialFailed', { count: failed }))
     },
     // 登记(replaceProjectAgentAssets)失败才到这;逐文件上传失败已在上面就地标记、不 throw。
-    onError: (e) => toast.error(e instanceof Error && e.message ? e.message : t('projects.agentAssetUploadFailed')),
+    onError: (e) => toast.error(extractErrorMessage(e, t('projects.agentAssetUploadFailed'))),
   })
 }
 
@@ -740,10 +734,7 @@ export function useDeleteProjectAsset() {
       })
       return { key, previous }
     },
-    onError: (error, _vars, context) => {
-      if (context?.previous) queryClient.setQueryData(context.key, context.previous)
-      toast.error(error instanceof Error && error.message ? error.message : t('projects.assetDeleteFailed'))
-    },
+    onError: (error, _vars, context) => rollbackOnError(context, error, t('projects.assetDeleteFailed')),
     onSettled: (_d, _e, { projectId }) => {
       void queryClient.invalidateQueries({ queryKey: queryKeys.projects.lists(), refetchType: 'none' })
       void queryClient.invalidateQueries({ queryKey: queryKeys.projects.detail(projectId), refetchType: 'none' })
@@ -781,10 +772,7 @@ export function useReorderAgentAssets() {
       })
       return { key, previous }
     },
-    onError: (error, _vars, context) => {
-      if (context?.previous) queryClient.setQueryData(context.key, context.previous)
-      toast.error(error instanceof Error && error.message ? error.message : t('projects.assetReorderFailed'))
-    },
+    onError: (error, _vars, context) => rollbackOnError(context, error, t('projects.assetReorderFailed')),
     // 整表替换会重建每个 agent 资产的 id → 必须真重拉,否则缓存里的旧 id 一失效,点开预览拉 comments 就 404。
     // order 只存 content_id(稳定),重拉后顺序照旧、只把对象/ id 换成新的。
     onSettled: (_d, _e, { projectId }) => {
@@ -872,7 +860,7 @@ export function useChangeProjectStatus() {
       }
       if (context?.detailKey) queryClient.setQueryData(context.detailKey, context.previousDetail)
       void queryClient.refetchQueries({ queryKey: queryKeys.projects.lists() })
-      toast.error(error instanceof Error && error.message ? error.message : t('projects.statusChangeFailed'))
+      toast.error(extractErrorMessage(error, t('projects.statusChangeFailed')))
     },
     onSettled: (_data, error) => {
       if (isAbort(error)) return // 被取消的那次不做对账,交给胜出的那次
