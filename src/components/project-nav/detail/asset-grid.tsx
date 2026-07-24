@@ -4,7 +4,7 @@ import { Check, Loader2, MessageSquare, Plus, ThumbsDown, ThumbsUp, Trash2 } fro
 
 import type { BffProjectDetail } from '@/generated/api-types'
 import { Group } from '@/components/project-nav/fields'
-import { useDeleteProjectAsset, useReorderAgentAssets, useSaveAssetTags } from '@/api/projects/projects'
+import { useDeleteProjectAsset, useReorderAgentAssets, useSaveAssetDescription, useSaveAssetTags } from '@/api/projects/projects'
 import { toast } from 'sonner'
 import { addProjectAssetToEditor } from '@/lib/add-to-editor'
 import { AssetViewer } from '@/components/asset-viewer'
@@ -47,6 +47,7 @@ export function AssetGrid({ projectId, assets }: { projectId: string; assets: No
   ] as const
   const viewer = useMediaLightbox()
   const saveTags = useSaveAssetTags()
+  const saveDesc = useSaveAssetDescription()
   const del = useDeleteProjectAsset()
   const reorder = useReorderAgentAssets()
   // 删除首点转确认(红 + 勾),再点才真删 —— 与状态菜单/评论删除同套二次确认,不用 window.confirm
@@ -176,6 +177,7 @@ export function AssetGrid({ projectId, assets }: { projectId: string; assets: No
         onIndexChange={viewer.onIndexChange}
         onClose={viewer.close}
         onTagsChange={(assetId, tags) => saveTags.mutate({ projectId, assetId, tags })}
+        onDescriptionChange={(assetId, description) => saveDesc.mutate({ projectId, assetId, description })}
       />
     </>
   )

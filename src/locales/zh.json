@@ -13,7 +13,9 @@
     "confirm": "确定",
     "noTags": "无标签",
     "roomTag": "房间标签",
-    "searchTagPlaceholder": "搜索房间标签…"
+    "searchTagPlaceholder": "搜索房间标签…",
+    "noDescription": "无描述",
+    "descriptionPlaceholder": "描述 / 生成用的 prompt…"
   },
   "clipGen": {
     "title": "生成 AI 视频",
@@ -399,6 +401,7 @@
     "saveFailed": "保存失败",
     "statusChangeFailed": "状态变更失败",
     "tagSaveFailed": "标签保存失败",
+    "descriptionSaveFailed": "描述保存失败",
     "visibilityUpdateFailed": "可见性修改失败"
   },
   "renders": {

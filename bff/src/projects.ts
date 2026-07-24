@@ -48,7 +48,7 @@ import {
 } from './generated/client';
 import { config } from './config';
 import { mediaKind, type MediaKind } from './media';
-import { forwardAuth, putBytes } from './xchange-client';
+import { forwardAuth, putBytes, requestVoid } from './xchange-client';
 
 // FSM 状态动作 → xchangeai 端点。start_work 为复合:created/prepared 先认领(assign)
 // 再 startWork(xchangeai 只接受 assigned→in_progress);其余均为单次调用。
@@ -200,6 +200,8 @@ const toAssets = (list: any[] | null | undefined, kind: 'creator' | 'agent') =>
       // 只有 agent_assets 有这两栏 —— creator 上传的原始素材不进审核。
       adminReview: a.admin_review_status ?? null,
       assigneeReview: a.assignee_review_status ?? null,
+      // agent asset 的描述(存 prompt 文本);上游 GET 会 overlay 进 agent_assets[].description,creator 无此字段
+      description: a.description ?? null,
       sizeBytes: a.content?.file_size ?? null,
       durationSeconds: a.content?.duration ?? null,
     }
@@ -374,6 +376,7 @@ export const registerProjectRoutes = (app: FastifyInstance): void => {
       tags: { type: 'array', items: { $ref: 'BffTag#' } },
       adminReview: nullable('string'), // pending | approved | rejected(仅 agent 资产)
       assigneeReview: nullable('string'),
+      description: nullable('string'), // agent asset 的描述(存 prompt 文本);creator 恒 null
       sizeBytes: nullable('number'),
       durationSeconds: nullable('number'),
     },
@@ -1084,6 +1087,41 @@ export const registerProjectRoutes = (app: FastifyInstance): void => {
       if (!isPermutation) return reply.code(409).send({ error: 'order mismatch' });
       await replaceProjectAgentAssets({ path: { id }, body: { agent_assets: want } }, auth);
       return { id };
+    },
+  )
+
+  // 给单个 agent asset 写 description(用来存这条资产的 prompt 文本):上游 admin/projects/:id/agent-assets/descriptions
+  // 是按 (project_id, asset_id) 的批量 upsert,这里发单元素数组。asset_id = 平台 agent asset id(= BffProjectAsset.id)。
+  // 注意:整表替换(排序/增删 Clips)会重建该 id → 之后描述可能孤儿(同 reorder 的 id 重建根因)。端点未进生成 client,直调上游。
+  app.put<{ Params: { id: string; assetId: string }; Body: { description: string } }>(
+    '/bff/projects/:id/assets/:assetId/description',
+    {
+      schema: {
+        operationId: 'saveBffAssetDescription',
+        tags: ['bff'],
+        params: {
+          type: 'object',
+          required: ['id', 'assetId'],
+          properties: { id: { type: 'string' }, assetId: { type: 'string' } },
+        },
+        body: {
+          type: 'object',
+          required: ['description'],
+          properties: { description: { type: 'string', maxLength: 4000 } },
+        },
+        response: {
+          200: { type: 'object', required: ['description'], properties: { description: { type: 'string' } } },
+        },
+      },
+    },
+    async (req) => {
+      const { id, assetId } = req.params;
+      await requestVoid(`admin/projects/${id}/agent-assets/descriptions`, {
+        method: 'PUT',
+        json: { assets: [{ asset_id: assetId, description: req.body.description }] },
+        headers: forwardAuth(req).headers,
+      });
+      return { description: req.body.description };
     },
   )
 

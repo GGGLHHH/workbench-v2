@@ -1,15 +1,17 @@
-import { useRef } from 'react'
+import { useRef, useState } from 'react'
 
 import type { BffTag } from '@/generated/api-types'
 import { CommentPane } from '@/components/comment-pane'
 import { MediaLightbox, type ViewerItem } from '@/components/media-lightbox'
 import { TagInfiniteSelect } from '@/components/tag-infinite-select'
+import { PromptPresetButton } from '@/components/clip-generator/prompt-preset-button'
 import {
   InfiniteSelectCancelButton,
   InfiniteSelectConfirmButton,
   InfiniteSelectFooter,
 } from '@/components/select/infinite-select'
 import { Separator } from '@/components/ui/separator'
+import { Textarea } from '@/components/ui/textarea'
 import { useTranslation } from 'react-i18next'
 
 // 项目资产查看器 = 媒体灯箱 + 房间标签 + 该资产的评论(可发)。
@@ -22,6 +24,7 @@ export function AssetViewer({
   onIndexChange,
   onClose,
   onTagsChange,
+  onDescriptionChange,
 }: {
   assets: ViewerItem[]
   index: number | null
@@ -29,6 +32,7 @@ export function AssetViewer({
   onIndexChange: (index: number) => void
   onClose: () => void
   onTagsChange?: (assetId: string, tags: BffTag[]) => void
+  onDescriptionChange?: (assetId: string, description: string) => void
 }) {
   const open = index !== null
   // 不能像原来那样 open=false 就 return null —— 那会立刻卸载 MediaLightbox,base-ui 来不及播退出
@@ -49,11 +53,23 @@ export function AssetViewer({
       subtitle={asset?.group ? (asset.group === 'creator' ? 'Resource' : 'Clip') : undefined}
       footer={
         assetId ? (
-          <AssetTagField
-            tags={asset?.tags ?? []}
-            onChange={(tags) => onTagsChange?.(assetId, tags)}
-            disabled={!onTagsChange}
-          />
+          <div className="flex flex-col gap-2">
+            <AssetTagField
+              tags={asset?.tags ?? []}
+              onChange={(tags) => onTagsChange?.(assetId, tags)}
+              disabled={!onTagsChange}
+            />
+            {/* description 仅对 agent asset 开放(上游 agent-assets/descriptions 按 asset_id upsert);存这条资产的 prompt 文本。
+                按 assetId key → 切资产重置草稿。 */}
+            {asset?.group === 'agent' ? (
+              <AssetDescriptionField
+                key={assetId}
+                description={asset?.description ?? ''}
+                onChange={(description) => onDescriptionChange?.(assetId, description)}
+                disabled={!onDescriptionChange}
+              />
+            ) : null}
+          </div>
         ) : null
       }
       sidebar={
@@ -68,6 +84,44 @@ export function AssetViewer({
         ) : null
       }
     />
+  )
+}
+
+// agent asset 的描述字段(存 prompt 文本):textarea + 从预设填入(复用图生视频的 PromptPresetButton),失焦保存(变了才写)。
+// 只读时(无 onDescriptionChange)展示文本。draft 本地态,靠外层 key={assetId} 在切资产时重置。
+function AssetDescriptionField({
+  description,
+  onChange,
+  disabled,
+}: {
+  description: string
+  onChange: (description: string) => void
+  disabled?: boolean
+}) {
+  const { t } = useTranslation()
+  const [draft, setDraft] = useState(description)
+  if (disabled) {
+    return description ? (
+      <p className="text-[11px] whitespace-pre-wrap text-muted-foreground">{description}</p>
+    ) : (
+      <span className="text-[11px] text-muted-foreground">{t('assetViewer.noDescription')}</span>
+    )
+  }
+  const commit = () => {
+    const next = draft.trim()
+    if (next !== description.trim()) onChange(next)
+  }
+  return (
+    <div className="flex flex-col gap-1">
+      <PromptPresetButton onPick={setDraft} />
+      <Textarea
+        rows={2}
+        value={draft}
+        onChange={(e) => setDraft(e.target.value)}
+        onBlur={commit}
+        placeholder={t('assetViewer.descriptionPlaceholder')}
+      />
+    </div>
   )
 }
 

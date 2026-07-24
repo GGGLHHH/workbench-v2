@@ -524,6 +524,40 @@ export function useSaveAssetTags() {
   })
 }
 
+// agent asset 的描述(存 prompt 文本):上游按 (project_id, asset_id) upsert,不重建 id → 乐观改缓存即可、无需重拉。
+// 端点新增、生成 client 未含,走 requestJson 打 /bff/*(同 reorder)。
+export function useSaveAssetDescription() {
+  const { t } = useTranslation()
+  return useMutation({
+    mutationFn: ({ projectId, assetId, description }: { projectId: string; assetId: string; description: string }) =>
+      requestJson<{ description: string }>(`/bff/projects/${projectId}/assets/${assetId}/description`, {
+        method: 'PUT',
+        json: { description },
+      }),
+    onMutate: async ({ projectId, assetId, description }) => {
+      const key = queryKeys.projects.detail(projectId)
+      await queryClient.cancelQueries({ queryKey: key })
+      const previous = queryClient.getQueryData<BffProject>(key)
+      queryClient.setQueryData<BffProject>(key, (old) =>
+        old
+          ? {
+              ...old,
+              detail: {
+                ...old.detail,
+                assets: old.detail.assets?.map((a) => (a.id === assetId ? ({ ...a, description } as BffProjectAsset) : a)),
+              },
+            }
+          : old,
+      )
+      return { key, previous }
+    },
+    onError: (error, _vars, context) => {
+      if (context?.previous) queryClient.setQueryData(context.key, context.previous)
+      toast.error(error instanceof Error && error.message ? error.message : t('projects.descriptionSaveFailed'))
+    },
+  })
+}
+
 // 可见性。下游只回 204,BFF 回显入参 → 直接就地改 detail 缓存。
 export function useSaveProjectVisibility() {
   const { t } = useTranslation()

@@ -22,6 +22,7 @@ export type ViewerItem = {
   group?: string
   tags?: BffTag[]
   commentCount?: number
+  description?: string | null
 }
 
 type FlipRect = { left: number; top: number; width: number; height: number }

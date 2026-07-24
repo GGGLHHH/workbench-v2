@@ -13,7 +13,9 @@
     "confirm": "OK",
     "noTags": "No tags",
     "roomTag": "Room tags",
-    "searchTagPlaceholder": "Search room tags…"
+    "searchTagPlaceholder": "Search room tags…",
+    "noDescription": "No description",
+    "descriptionPlaceholder": "Description / generation prompt…"
   },
   "clipGen": {
     "title": "Generate AI clip",
@@ -399,6 +401,7 @@
     "saveFailed": "Save failed",
     "statusChangeFailed": "Status change failed",
     "tagSaveFailed": "Failed to save tags",
+    "descriptionSaveFailed": "Failed to save description",
     "visibilityUpdateFailed": "Failed to update visibility"
   },
   "renders": {
