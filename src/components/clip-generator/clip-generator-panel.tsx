@@ -2,28 +2,22 @@
 // 选中时间线块 → 认出它绑定的源图(照片块:assetId 素材 url 派生 ref;clip 块:assetId=clipId 反查
 // ClipRecord.sourceImageRef)→ 显示「原图 + 该图全部 take」,就地替换选中块(from/track/itemId 不变),
 // 高亮当前形态。零改库:替换只重写 items[itemId](见 lib/replace-clip)。take 卡片对齐 RendersList 的 MediaCard。
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { ImagePlus, Loader2, RotateCcw, Sparkles, Wand2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { useEditor } from '@gedatou/editor'
-import {
-  invalidateProjectClips,
-  useClipProviders,
-  useClipTask,
-  useGenerateClip,
-  useProjectClips,
-} from '@/api/clips'
+import { useClipTaskWatcher, useGenerateClip, useProjectClips } from '@/api/clips'
 import { useClipPromptAssist } from '@/api/prompt-assist'
-import { CAMERA_MOVES, ClipGroupGenerate, type GroupImage } from './clip-group-generate'
+import { ClipGroupGenerate, type GroupImage } from './clip-group-generate'
+import { useClipGenForm } from './use-clip-gen-form'
+import { ClipGenControlsRow } from './clip-gen-controls-row'
 import { ClipTakeCard, DeleteTakeButton } from './clip-take-card'
 import { PromptPresetButton } from './prompt-preset-button'
 import { replaceItemWithClip, revertItemToPhoto } from '@/lib/replace-clip'
 import { MediaCard, Thumb, duration as fmtDuration } from '@/components/media-card'
 import { MediaLightbox, useMediaLightbox, type ViewerItem } from '@/components/media-lightbox'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select'
 import { Textarea } from '@/components/ui/textarea'
 
 const PHOTO = 'photo' as const
@@ -112,43 +106,14 @@ export function ClipGeneratorPanel({ projectId }: { projectId: string | null }) 
   }, [binding, takes, allClips])
 
   // —— 生成控件状态(始终挂载,保证 hook 顺序稳定;无绑定时不渲染)——
-  const providersQ = useClipProviders()
-  const providers = providersQ.data ?? []
-  const [providerId, setProviderId] = useState('')
-  useEffect(() => {
-    if (!providerId && providers.length) setProviderId((providers.find((p) => p.configured) ?? providers[0]).id)
-  }, [providers, providerId])
-  const provider = providers.find((p) => p.id === providerId)
-  const durations = provider?.durations
-  const adjustable = durations?.adjustable !== false
-  const durationValues = durations?.values ?? null
-
-  const [cameraMove, setCameraMove] = useState('slowPushIn')
-  const [promptBody, setPromptBody] = useState('')
-  const [durationSeconds, setDurationSeconds] = useState(6)
-  useEffect(() => {
-    if (adjustable && durationValues?.length && !durationValues.includes(durationSeconds)) setDurationSeconds(durationValues[0])
-  }, [adjustable, durationValues, durationSeconds])
+  const form = useClipGenForm()
+  const { provider, providerId, adjustable, cameraMove, durationSeconds, promptBody, setPromptBody } = form
 
   const gen = useGenerateClip()
   const assist = useClipPromptAssist()
-  const [taskId, setTaskId] = useState<string | null>(null)
-  // 记住这次生成是「给哪张源图」的:任务 id 是组件级单槽,若不记录,切到别的块后转圈会画错块上。
+  // 单槽任务轮询(done/error 自动提示+失效+清槽);genRef 记「给哪张源图」的,切块后转圈不画错块。
+  const { setTaskId, task, generating } = useClipTaskWatcher(projectId)
   const [genRef, setGenRef] = useState<string | null>(null)
-  const task = useClipTask(taskId).data
-  const generating = !!taskId && task?.status !== 'done' && task?.status !== 'error'
-  useEffect(() => {
-    if (!task || !projectId) return
-    if (task.status === 'done') {
-      invalidateProjectClips(projectId)
-      toast.success(t('clipGen.done'))
-      setTaskId(null)
-    } else if (task.status === 'error') {
-      toast.error(task.error || t('clipGen.failed'))
-      setTaskId(null)
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [task?.status])
 
   if (!projectId) return null
 
@@ -232,49 +197,7 @@ export function ClipGeneratorPanel({ projectId }: { projectId: string | null }) 
           <div className="flex gap-2">
             <Thumb url={binding.photoUrl} kind="image" className="size-16 shrink-0 rounded-md" />
             <div className="flex min-w-0 flex-1 flex-col gap-1.5">
-              <NativeSelect className="h-8" value={providerId} disabled={providersQ.isLoading} onChange={(e) => setProviderId(e.target.value)}>
-                {providers.map((p) => (
-                  <NativeSelectOption key={p.id} value={p.id} disabled={!p.configured}>
-                    {p.label}
-                    {p.configured ? '' : ` — ${p.configurationIssue ?? t('clipGen.notConfigured')}`}
-                  </NativeSelectOption>
-                ))}
-              </NativeSelect>
-              <div className="flex gap-1.5">
-                <NativeSelect className="h-8 flex-1" value={cameraMove} onChange={(e) => setCameraMove(e.target.value)}>
-                  {CAMERA_MOVES.map((m) => (
-                    <NativeSelectOption key={m} value={m}>
-                      {t(`clipGen.camera.${m}`)}
-                    </NativeSelectOption>
-                  ))}
-                </NativeSelect>
-                {!adjustable ? (
-                  <span className="flex h-8 w-16 items-center justify-center rounded-md border text-[11px] text-muted-foreground">
-                    {t('clipGen.modelPicks')}
-                  </span>
-                ) : durationValues?.length ? (
-                  <NativeSelect className="h-8 w-16" value={String(durationSeconds)} onChange={(e) => setDurationSeconds(Number(e.target.value))}>
-                    {durationValues.map((v) => (
-                      <NativeSelectOption key={v} value={String(v)}>
-                        {v}s
-                      </NativeSelectOption>
-                    ))}
-                  </NativeSelect>
-                ) : (
-                  <Input
-                    type="number"
-                    className="h-8 w-16"
-                    min={durations?.min ?? 1}
-                    max={durations?.max ?? 60}
-                    value={durationSeconds}
-                    onChange={(e) =>
-                      setDurationSeconds(
-                        Math.min(durations?.max ?? 60, Math.max(durations?.min ?? 1, Number(e.target.value) || (durations?.min ?? 1))),
-                      )
-                    }
-                  />
-                )}
-              </div>
+              <ClipGenControlsRow form={form} />
             </div>
           </div>
           {/* 从预设目录挑一条 prompt 填入文本框(选完可再用 AI 改写)。 */}

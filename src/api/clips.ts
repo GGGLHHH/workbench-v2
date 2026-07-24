@@ -1,6 +1,9 @@
 // 图生视频前端 API 层(TanStack Query 包生成的 /bff/clip* client)。
 // provider 目录 / 某源图的 take 列表(单图多视频)/ 发起生成 / 轮询任务 / 删除 take。
+import { useEffect, useState } from 'react'
 import { useMutation, useQuery } from '@tanstack/react-query'
+import { useTranslation } from 'react-i18next'
+import { toast } from 'sonner'
 import type { BffGenerateClipRequest } from '@/generated/api-types'
 import { deleteBffClip, generateBffClip, getBffClip, listBffClipProviders, listBffClips } from '@/generated/client'
 import { queryClient } from '@/lib/query-client'
@@ -49,6 +52,30 @@ export function useClipTask(taskId: string | null) {
 /** 让某项目的所有 take 列表失效(生成完成 / 删除后调用)。 */
 export function invalidateProjectClips(projectId: string) {
   void queryClient.invalidateQueries({ queryKey: ['bff', 'clips', 'list', projectId] })
+}
+
+/**
+ * 单槽生成任务的轮询 + 终态副作用:setTaskId 启动;done → 失效项目 clips + 成功提示 + 清槽;
+ * error → 失败提示 + 清槽。单图面板与组的 sequence 任务共用(组的 batch N 任务轮询结构不同,不并入)。
+ */
+export function useClipTaskWatcher(projectId: string | null) {
+  const { t } = useTranslation()
+  const [taskId, setTaskId] = useState<string | null>(null)
+  const task = useClipTask(taskId).data
+  const generating = !!taskId && task?.status !== 'done' && task?.status !== 'error'
+  useEffect(() => {
+    if (!task || !projectId) return
+    if (task.status === 'done') {
+      invalidateProjectClips(projectId)
+      toast.success(t('clipGen.done'))
+      setTaskId(null)
+    } else if (task.status === 'error') {
+      toast.error(task.error || t('clipGen.failed'))
+      setTaskId(null)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [task?.status])
+  return { taskId, setTaskId, task, generating }
 }
 
 /** 删一条 take(记录 + 盘文件),成功后失效该项目 take 列表。 */

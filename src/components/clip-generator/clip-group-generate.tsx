@@ -9,22 +9,19 @@ import { useTranslation } from 'react-i18next'
 import { Loader2, Sparkles, Wand2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { useQuery } from '@tanstack/react-query'
-import { invalidateProjectClips, useClipProviders, useClipTask, useGenerateClip, useProjectClips } from '@/api/clips'
+import { invalidateProjectClips, useClipTaskWatcher, useGenerateClip, useProjectClips } from '@/api/clips'
 import { useClipPromptAssist } from '@/api/prompt-assist'
 import { getBffClip } from '@/generated/client'
+import { useClipGenForm } from './use-clip-gen-form'
+import { ClipGenControlsRow } from './clip-gen-controls-row'
 import { ClipTakeCard } from './clip-take-card'
 import { PromptPresetButton } from './prompt-preset-button'
 import { SortableClipsGrid } from '@/components/sortable-clips-grid'
 import { MediaLightbox, useMediaLightbox, type ViewerItem } from '@/components/media-lightbox'
 import { Thumb } from '@/components/media-card'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select'
 import { Textarea } from '@/components/ui/textarea'
 import { cn } from '@/lib/utils'
-
-// 运镜档位(单图面板与组面板共用;单一定义避免漂移)。
-export const CAMERA_MOVES = ['auto', 'slowPushIn', 'slowPullBack', 'panLeft', 'panRight', 'tiltUp', 'tiltDown', 'staticHold'] as const
 
 export type GroupImage = { ref: string; url: string; name: string | null; itemId: string }
 type Mode = 'batch' | 'sequence'
@@ -40,19 +37,9 @@ export function ClipGroupGenerate({
   onReorder?: (orderedItemIds: string[]) => void
 }) {
   const { t } = useTranslation()
-  const providersQ = useClipProviders()
-  const providers = providersQ.data ?? []
-
-  const [providerId, setProviderId] = useState('')
-  useEffect(() => {
-    if (providerId || !providers.length) return
-    setProviderId((providers.find((p) => p.configured) ?? providers[0]).id)
-  }, [providers, providerId])
-  const provider = providers.find((p) => p.id === providerId)
+  const form = useClipGenForm()
+  const { provider, providerId, adjustable, cameraMove, durationSeconds, promptBody, setPromptBody } = form
   const supportsKeyframes = !!provider?.keyframes?.supported
-  const durations = provider?.durations
-  const adjustable = durations?.adjustable !== false
-  const durationValues = durations?.values ?? null
 
   const [mode, setMode] = useState<Mode>('batch')
   useEffect(() => {
@@ -74,13 +61,6 @@ export function ClipGroupGenerate({
     setOrdered(next)
     onReorder?.(next.map((x) => x.itemId))
   }
-  const [cameraMove, setCameraMove] = useState('slowPushIn')
-  const [promptBody, setPromptBody] = useState('')
-  const [durationSeconds, setDurationSeconds] = useState(6)
-  useEffect(() => {
-    if (adjustable && durationValues?.length && !durationValues.includes(durationSeconds)) setDurationSeconds(durationValues[0])
-  }, [adjustable, durationValues, durationSeconds])
-
   const awaitingUpload = ordered.some((i) => i.url.startsWith('blob:'))
 
   // 结果区:命中本组任一源图的 clip(集合判断,顺序无关)。sequence clip 挂全组 → 每个成员都能看到。
@@ -104,21 +84,8 @@ export function ClipGroupGenerate({
 
   const gen = useGenerateClip()
 
-  // A(sequence):单任务
-  const [seqTaskId, setSeqTaskId] = useState<string | null>(null)
-  const seqTask = useClipTask(seqTaskId).data
-  useEffect(() => {
-    if (!seqTask) return
-    if (seqTask.status === 'done') {
-      invalidateProjectClips(projectId)
-      toast.success(t('clipGen.done'))
-      setSeqTaskId(null)
-    } else if (seqTask.status === 'error') {
-      toast.error(seqTask.error || t('clipGen.failed'))
-      setSeqTaskId(null)
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [seqTask?.status])
+  // A(sequence):单任务,复用单槽轮询 hook(done/error 自动提示+失效+清槽)
+  const { taskId: seqTaskId, setTaskId: setSeqTaskId, task: seqTask } = useClipTaskWatcher(projectId)
 
   // B(batch):N 个任务,一个 poller 统一轮询到全部落定
   const [batchTaskIds, setBatchTaskIds] = useState<string[] | null>(null)
@@ -262,51 +229,21 @@ export function ClipGroupGenerate({
         </div>
       )}
 
-      <NativeSelect className="h-8" value={providerId} disabled={providersQ.isLoading} onChange={(e) => setProviderId(e.target.value)}>
-        {providers.map((p) => (
-          <NativeSelectOption key={p.id} value={p.id} disabled={!p.configured}>
-            {p.label}
-            {p.configured ? '' : ` — ${p.configurationIssue ?? t('clipGen.notConfigured')}`}
-          </NativeSelectOption>
-        ))}
-      </NativeSelect>
-
-      <div className="flex gap-1.5">
-        <NativeSelect className="h-8 flex-1" value={cameraMove} onChange={(e) => setCameraMove(e.target.value)}>
-          {CAMERA_MOVES.map((m) => (
-            <NativeSelectOption key={m} value={m}>
-              {t(`clipGen.camera.${m}`)}
-            </NativeSelectOption>
-          ))}
-        </NativeSelect>
-        {!adjustable ? (
-          <span className="flex h-8 w-16 items-center justify-center rounded-md border text-[11px] text-muted-foreground">
-            {t('clipGen.modelPicks')}
-          </span>
-        ) : durationValues?.length ? (
-          <NativeSelect className="h-8 w-16" value={String(durationSeconds)} onChange={(e) => setDurationSeconds(Number(e.target.value))}>
-            {durationValues.map((v) => (
-              <NativeSelectOption key={v} value={String(v)}>
-                {v}s
-              </NativeSelectOption>
-            ))}
-          </NativeSelect>
-        ) : (
-          <Input
-            type="number"
-            className="h-8 w-16"
-            min={durations?.min ?? 1}
-            max={durations?.max ?? 60}
-            value={durationSeconds}
-            onChange={(e) =>
-              setDurationSeconds(Math.min(durations?.max ?? 60, Math.max(durations?.min ?? 1, Number(e.target.value) || (durations?.min ?? 1))))
-            }
-          />
-        )}
-        <Button size="icon-sm" variant="outline" className="h-8" disabled={awaitingUpload || assist.isPending} onClick={onAssist} title={t('clipGen.groupAssist')}>
-          {assist.isPending ? <Loader2 className="animate-spin" /> : <Wand2 />}
-        </Button>
-      </div>
+      <ClipGenControlsRow
+        form={form}
+        trailing={
+          <Button
+            size="icon-sm"
+            variant="outline"
+            className="h-8"
+            disabled={awaitingUpload || assist.isPending}
+            onClick={onAssist}
+            title={t('clipGen.groupAssist')}
+          >
+            {assist.isPending ? <Loader2 className="animate-spin" /> : <Wand2 />}
+          </Button>
+        }
+      />
 
       {/* 从预设目录挑一条 prompt 填入文本框(选完可再用 AI 改写)。 */}
       <PromptPresetButton onPick={setPromptBody} />
