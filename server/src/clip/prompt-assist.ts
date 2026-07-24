@@ -1,4 +1,5 @@
 // Prompt Assist:多模态 Gemini 文本调用,给选中源图生成/改写一条图生视频运镜 promptBody。
+// 支持单图或一组有序图(mode 决定语义:batch=每张各自运镜的统一提示词;sequence=首→末的整段运动)。
 // mock 优先(无 GEMINI_API_KEY 或 PROMPT_ASSIST_MOCK 时返回确定性 stub,开发态零花费,贴合“不浪费额度”)。
 // 输出的是「正文」——房产保真护栏由 BFF 的 compileClipPrompt 事后置顶,这里只提示模型别越界,不重复整段护栏。
 import { resolveImageInput } from './image-input';
@@ -8,11 +9,14 @@ import type { FetchLike } from './types';
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 export type PromptAssistAction = 'generate' | 'improve';
+// batch:一组图各自生成一条独立 clip → 一条通用运镜正文;sequence:首=首帧、末=末帧,一条穿越序列的运动正文
+export type PromptAssistMode = 'batch' | 'sequence';
 
 export type PromptAssistInput = {
-  imageUrl: string; // 绝对可达 URL(BFF 已解析)
+  imageUrls: string[]; // 1 张(单图)或多张(有序组);均需绝对可达 URL(BFF 已解析)
   action: PromptAssistAction;
-  currentPrompt?: string; // improve 时的现有正文
+  currentPrompt?: string;
+  mode?: PromptAssistMode; // 仅多图时有意义,缺省 batch
 };
 
 export type PromptAssistResult = {
@@ -26,33 +30,54 @@ const MAX_PROMPT_CHARS = 1000;
 
 export const clampPrompt = (s: string): string => String(s ?? '').replace(/\s+/g, ' ').trim().slice(0, MAX_PROMPT_CHARS);
 
-// 正文级保真提醒(不含完整护栏 —— compileClipPrompt 会把 PROPERTY_FIDELITY_GUARDRAIL 置顶)。
 const FIDELITY_NOTE =
-  'The property must stay exactly as photographed: never invent, remove, remodel, restage, relight, or add architecture, furniture, decor, people, animals, vehicles, text, logos, or weather. Describe only a single continuous, restrained, physically plausible camera move over the visible scene.';
+  'The property must stay exactly as photographed: never invent, remove, remodel, restage, relight, or add architecture, furniture, decor, people, animals, vehicles, text, logos, or weather. Describe only a continuous, restrained, physically plausible camera move over the visible scene.';
 
-/** 组装喂给 Gemini 的文本指令(与图片一起走多模态)。 */
-export const buildAssistInstruction = (action: PromptAssistAction, currentPrompt?: string): string => {
+/** 组装喂给 Gemini 的文本指令。imageCount>1 时按 mode 描述这组图的关系。 */
+export const buildAssistInstruction = (
+  action: PromptAssistAction,
+  currentPrompt: string | undefined,
+  imageCount: number,
+  mode: PromptAssistMode,
+): string => {
   const cur = clampPrompt(currentPrompt ?? '');
+  const subject =
+    imageCount <= 1
+      ? 'this real-estate listing photo'
+      : mode === 'sequence'
+        ? `these ${imageCount} ordered real-estate photos, where the FIRST is the start frame and the LAST is the end frame of one continuous shot that moves through them in order`
+        : `these ${imageCount} real-estate photos as a coordinated set that each get the same style of restrained camera move`;
   const task =
     action === 'improve' && cur
-      ? `Improve this existing real-estate image-to-video camera prompt while keeping its intent:\n"""${cur}"""`
-      : 'Write a real-estate image-to-video camera prompt for this photo.';
+      ? `Improve this existing image-to-video camera prompt while keeping its intent, targeting ${subject}:\n"""${cur}"""`
+      : `Write a single image-to-video camera prompt for ${subject}.`;
   return [
     'You are a cinematographer writing image-to-video camera prompts for real-estate listing photos.',
     task,
     FIDELITY_NOTE,
-    'Keep it concise (one or two sentences), concrete about the camera path, and grounded in what is visible in the photo.',
+    imageCount > 1 && mode === 'sequence'
+      ? 'Describe one smooth, continuous camera motion that carries from the first photo to the last in order.'
+      : 'Keep it concise (one or two sentences), concrete about the camera path, and grounded in what is visible.',
     `Respond with strict minified JSON only, no markdown, shaped exactly: {"suggestedPrompt": string, "rationale": string (one short sentence), "warnings": string[] (may be empty)}. suggestedPrompt must be at most ${MAX_PROMPT_CHARS} characters and contain only the camera-move body — no fidelity boilerplate.`,
   ].join('\n\n');
 };
 
 /** 无 key / mock 模式的确定性建议(不打真 Gemini)。 */
-export const mockAssist = (action: PromptAssistAction, currentPrompt?: string): PromptAssistResult => {
+export const mockAssist = (
+  action: PromptAssistAction,
+  currentPrompt: string | undefined,
+  imageCount: number,
+  mode: PromptAssistMode,
+): PromptAssistResult => {
   const cur = clampPrompt(currentPrompt ?? '');
-  const base =
-    action === 'improve' && cur
-      ? `${cur} Keep the motion slow and continuous with stable exposure and straight architectural lines.`
-      : 'Slow, steady push-in toward the main focal area of the room, holding straight architectural lines, natural light, and one continuous silent shot.';
+  let base: string;
+  if (action === 'improve' && cur) {
+    base = `${cur} Keep the motion slow and continuous with stable exposure and straight architectural lines.`;
+  } else if (imageCount > 1 && mode === 'sequence') {
+    base = 'One continuous camera move that slowly travels from the first framing to the last, keeping straight architectural lines, natural light, and a single silent shot.';
+  } else {
+    base = 'Slow, steady push-in toward the main focal area of the room, holding straight architectural lines, natural light, and one continuous silent shot.';
+  }
   return {
     suggestedPrompt: clampPrompt(base),
     rationale: 'Offline mock suggestion (no GEMINI_API_KEY configured).',
@@ -98,15 +123,18 @@ export const parseAssistResponse = (text: string): PromptAssistResult => {
   return { suggestedPrompt, rationale: String(obj?.rationale ?? ''), warnings, mock: false };
 };
 
-/** 主入口:mock 优先;有 key 则取图字节 + 多模态 generateContent → 解析 JSON。 */
+/** 主入口:mock 优先;有 key 则取每张图字节 + 多模态 generateContent → 解析 JSON。 */
 export const generatePromptAssist = async (
   input: PromptAssistInput,
   fetchImpl: FetchLike = ((...a: Parameters<typeof fetch>) => globalThis.fetch(...a)) as FetchLike,
 ): Promise<PromptAssistResult> => {
+  const imageUrls = (input.imageUrls ?? []).filter(Boolean);
+  if (imageUrls.length === 0) throw new Error('Prompt assist: at least one image required');
+  const mode: PromptAssistMode = input.mode === 'sequence' ? 'sequence' : 'batch';
   const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey || process.env.PROMPT_ASSIST_MOCK) return mockAssist(input.action, input.currentPrompt);
+  if (!apiKey || process.env.PROMPT_ASSIST_MOCK) return mockAssist(input.action, input.currentPrompt, imageUrls.length, mode);
 
-  const image = await resolveImageInput(input.imageUrl, 'base64', fetchImpl);
+  const images = await Promise.all(imageUrls.map((u) => resolveImageInput(u, 'base64', fetchImpl)));
   const { GoogleGenAI } = await import('@google/genai');
   const ai: any = new GoogleGenAI({ apiKey });
   const model = envStr('PROMPT_ASSIST_MODEL', 'gemini-2.5-flash');
@@ -115,8 +143,8 @@ export const generatePromptAssist = async (
     contents: [
       {
         parts: [
-          { inlineData: { mimeType: image.mimeType, data: image.base64 } },
-          { text: buildAssistInstruction(input.action, input.currentPrompt) },
+          ...images.map((img) => ({ inlineData: { mimeType: img.mimeType, data: img.base64 } })),
+          { text: buildAssistInstruction(input.action, input.currentPrompt, images.length, mode) },
         ],
       },
     ],

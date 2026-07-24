@@ -136,9 +136,11 @@ app.post<{
     durationSeconds?: number;
     aspectRatio?: string;
     referenceImageUrls?: string[];
+    endImageUrl?: string; // 关键帧模式 A:末帧
     // 绑定 + 元数据(齐全则生成成功后写本机 clip 索引)
     projectId?: string;
     sourceImageRef?: string;
+    sourceImageRefs?: string[]; // 归属的全部源图 ref(序列 A = 全组成员)
     referenceImageRefs?: string[];
     promptBody?: string;
     cameraMove?: string;
@@ -155,8 +157,10 @@ app.post<{
     durationSeconds: b.durationSeconds,
     aspectRatio: b.aspectRatio,
     referenceImageUrls: b.referenceImageUrls,
+    endImageUrl: b.endImageUrl,
     projectId: b.projectId,
     sourceImageRef: b.sourceImageRef,
+    sourceImageRefs: b.sourceImageRefs,
     referenceImageRefs: b.referenceImageRefs,
     promptBody: b.promptBody,
     cameraMove: b.cameraMove,
@@ -166,15 +170,17 @@ app.post<{
   return reply.code(202).send({ taskId });
 });
 
-// Prompt Assist:给源图生成/改写运镜 promptBody。mock 优先(无 GEMINI_API_KEY 即返回确定性 stub)。
-app.post<{ Body: { imageUrl?: string; action?: string; currentPrompt?: string } }>(
+// Prompt Assist:给一张或一组有序源图生成/改写运镜 promptBody。mock 优先(无 GEMINI_API_KEY 即返回确定性 stub)。
+app.post<{ Body: { imageUrls?: string[]; action?: string; currentPrompt?: string; mode?: string } }>(
   '/api/prompt-assist',
   async (req, reply) => {
     const b = req.body ?? {};
-    if (!b.imageUrl) return reply.code(400).send({ error: 'imageUrl required' });
+    const imageUrls = (b.imageUrls ?? []).filter(Boolean);
+    if (imageUrls.length === 0) return reply.code(400).send({ error: 'imageUrls required' });
     const action = b.action === 'improve' ? 'improve' : 'generate';
+    const mode = b.mode === 'sequence' ? 'sequence' : 'batch';
     try {
-      return await generatePromptAssist({ imageUrl: b.imageUrl, action, currentPrompt: b.currentPrompt });
+      return await generatePromptAssist({ imageUrls, action, currentPrompt: b.currentPrompt, mode });
     } catch (e) {
       return reply.code(502).send({ error: e instanceof Error ? e.message : 'prompt assist failed' });
     }

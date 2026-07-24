@@ -10,7 +10,10 @@ import { isValidProjectId } from '../render-index';
 export type ClipRecord = {
   clipId: string; // = 磁盘产物名 clips/<clipId>.mp4,也 = 生成任务 taskId
   projectId: string;
-  sourceImageRef: string; // 从哪张图生成(xchangeai content_id / 本地 assetId)
+  sourceImageRef: string; // 主源图(单图/批量 B = 该图;序列 A = 首图)。归属挂内容 ref,不挂组。
+  /** 归属的全部源图内容 ref(序列 A = 全组成员快照;单图/批量 B = [自身])。生成时定格,
+   *  组之后拆散/删成员都不影响——列表按"命中任一 ref"显示。缺省(旧记录)视为 [sourceImageRef]。 */
+  sourceImageRefs?: string[];
   referenceImageRefs?: string[]; // 用到的同房间参考角度(Veo/Seedance)
   url: string; // /media/clips/<clipId>.mp4 绝对地址
   provider: string;
@@ -64,10 +67,12 @@ export const appendClip = async (projectId: string, rec: ClipRecord): Promise<vo
   await writeClipIndex(projectId, [rec, ...records.filter((r) => r.clipId !== rec.clipId)]);
 };
 
-/** 列某项目的 take,可选按源图过滤(= 单图的多个视频)。 */
+/** 列某项目的 take,可选按源图过滤。命中 = 主 ref 相等,或 sourceImageRefs 里含该 ref
+ *  (序列 clip 会出现在其每个源图名下)。 */
 export const listClips = async (projectId: string, sourceImageRef?: string): Promise<ClipRecord[]> => {
   const records = await readClipIndex(projectId);
-  return sourceImageRef ? records.filter((r) => r.sourceImageRef === sourceImageRef) : records;
+  if (!sourceImageRef) return records;
+  return records.filter((r) => r.sourceImageRef === sourceImageRef || r.sourceImageRefs?.includes(sourceImageRef));
 };
 
 /** 删一条 take:去索引 + 删磁盘 clip 文件。返回是否删到。 */

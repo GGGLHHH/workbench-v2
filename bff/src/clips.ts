@@ -33,6 +33,8 @@ type GenerateBody = {
   focusSubject?: string;
   lightTransition?: LightTransition;
   referenceImageUrls?: string[];
+  endImageUrl?: string; // 关键帧模式 A:末帧引用
+  sourceImageRefs?: string[]; // 归属的全部源图 ref(序列 A = 全组成员;缺省 = [由 imageUrl 派生])
 };
 
 export const registerClipRoutes = (app: FastifyInstance): void => {
@@ -56,12 +58,13 @@ export const registerClipRoutes = (app: FastifyInstance): void => {
   app.addSchema({
     $id: 'BffClipProvider',
     type: 'object',
-    required: ['id', 'label', 'durations', 'referenceImages', 'configured'],
+    required: ['id', 'label', 'durations', 'referenceImages', 'keyframes', 'configured'],
     properties: {
       id: { type: 'string' },
       label: { type: 'string' },
       durations: { $ref: 'BffDurations#' },
       referenceImages: { $ref: 'BffReferenceSupport#' },
+      keyframes: { $ref: 'BffReferenceSupport#' }, // 同形 {supported,max};支持首尾帧(方案 A)
       configured: { type: 'boolean' },
       configurationIssue: { type: ['string', 'null'] },
     },
@@ -87,6 +90,8 @@ export const registerClipRoutes = (app: FastifyInstance): void => {
       focusSubject: { type: 'string' },
       lightTransition: { type: 'string' },
       referenceImageUrls: { type: 'array', items: { type: 'string' }, maxItems: 8 },
+      endImageUrl: { type: 'string' }, // 关键帧模式 A:末帧
+      sourceImageRefs: { type: 'array', items: { type: 'string' }, maxItems: 8 }, // 归属源图 ref(序列=全组成员)
     },
   });
   app.addSchema({
@@ -112,6 +117,7 @@ export const registerClipRoutes = (app: FastifyInstance): void => {
     properties: {
       clipId: { type: 'string' },
       sourceImageRef: { type: 'string' },
+      sourceImageRefs: { type: 'array', items: { type: 'string' } }, // 归属全部源图(序列 clip 在每个成员名下都出现)
       referenceImageRefs: { type: 'array', items: { type: 'string' } },
       url: { type: 'string' },
       provider: { type: 'string' },
@@ -150,6 +156,7 @@ export const registerClipRoutes = (app: FastifyInstance): void => {
           label: p.label,
           durations: p.durations,
           referenceImages: p.referenceImages,
+          keyframes: p.keyframes ?? { supported: false, max: 0 },
           configured: p.configured,
           configurationIssue: p.configurationIssue ?? null,
         })),
@@ -176,6 +183,7 @@ export const registerClipRoutes = (app: FastifyInstance): void => {
       const referenceImageUrls = b.referenceImageUrls?.length
         ? await Promise.all(b.referenceImageUrls.slice(0, 8).map((u) => resolveImageUrl(u, auth)))
         : undefined;
+      const endImageUrl = b.endImageUrl ? await resolveImageUrl(b.endImageUrl, auth) : undefined;
       const prompt = compileClipPrompt({
         promptBody: b.promptBody,
         cameraMove: b.cameraMove,
@@ -192,10 +200,13 @@ export const registerClipRoutes = (app: FastifyInstance): void => {
           durationSeconds: b.durationSeconds,
           aspectRatio: b.aspectRatio,
           referenceImageUrls,
+          endImageUrl,
           // 绑定:projectId 由前端传,sourceImageRef/referenceImageRefs 从原始引用派生;
           // 运镜参数原样带上,存进索引记录(compiledPrompt 已在上面的 prompt)。
           projectId: b.projectId,
           sourceImageRef: b.projectId ? refOf(b.imageUrl) : undefined,
+          // 归属源图 ref:前端传了(序列 A = 全组成员)用之,否则退化为 [主源图]。挂内容、不挂组。
+          sourceImageRefs: b.projectId ? (b.sourceImageRefs?.length ? b.sourceImageRefs : [refOf(b.imageUrl)]) : undefined,
           referenceImageRefs: b.projectId ? b.referenceImageUrls?.slice(0, 8).map(refOf) : undefined,
           promptBody: b.promptBody,
           cameraMove: b.cameraMove,
@@ -280,6 +291,7 @@ export const registerClipRoutes = (app: FastifyInstance): void => {
         clips: (data.clips ?? []).map((c) => ({
           clipId: c.clipId,
           sourceImageRef: c.sourceImageRef,
+          sourceImageRefs: c.sourceImageRefs ?? undefined,
           referenceImageRefs: c.referenceImageRefs,
           url: c.url,
           provider: c.provider,

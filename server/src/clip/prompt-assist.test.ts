@@ -21,27 +21,38 @@ describe('clampPrompt', () => {
 });
 
 describe('buildAssistInstruction', () => {
-  it('generate 与 improve 走不同任务句;improve 内嵌现有正文', () => {
-    expect(buildAssistInstruction('generate')).toContain('Write a real-estate');
-    const imp = buildAssistInstruction('improve', 'slow pan left');
+  it('单图:generate 与 improve 走不同任务句;improve 内嵌现有正文', () => {
+    expect(buildAssistInstruction('generate', undefined, 1, 'batch')).toContain('Write a single');
+    const imp = buildAssistInstruction('improve', 'slow pan left', 1, 'batch');
     expect(imp).toContain('Improve this existing');
     expect(imp).toContain('slow pan left');
   });
-  it('improve 但正文为空 → 退回 generate 语义', () => {
-    expect(buildAssistInstruction('improve', '   ')).toContain('Write a real-estate');
+  it('多图 sequence:提到首帧/末帧与连续运动', () => {
+    const seq = buildAssistInstruction('generate', undefined, 3, 'sequence');
+    expect(seq).toContain('start frame');
+    expect(seq).toContain('end frame');
+    expect(seq).toContain('continuous camera motion');
+  });
+  it('多图 batch:提到协调的一组图', () => {
+    const b = buildAssistInstruction('generate', undefined, 3, 'batch');
+    expect(b).toContain('coordinated set');
   });
 });
 
 describe('mockAssist', () => {
   it('返回确定性建议且标记 mock', () => {
-    const g = mockAssist('generate');
+    const g = mockAssist('generate', undefined, 1, 'batch');
     expect(g.mock).toBe(true);
     expect(g.suggestedPrompt.length).toBeGreaterThan(0);
     expect(g.warnings.length).toBeGreaterThan(0);
   });
   it('improve 把现有正文并入建议', () => {
-    const r = mockAssist('improve', 'pan right across the kitchen');
+    const r = mockAssist('improve', 'pan right across the kitchen', 1, 'batch');
     expect(r.suggestedPrompt).toContain('pan right across the kitchen');
+  });
+  it('多图 sequence 用穿越序列的措辞', () => {
+    const r = mockAssist('generate', undefined, 3, 'sequence');
+    expect(r.suggestedPrompt.toLowerCase()).toContain('first');
   });
 });
 
@@ -74,14 +85,20 @@ describe('parseAssistResponse', () => {
 
 describe('generatePromptAssist mock 路径', () => {
   it('无 GEMINI_API_KEY → 走 mock,不碰 SDK', async () => {
-    const r = await generatePromptAssist({ imageUrl: 'https://example.com/a.jpg', action: 'generate' });
+    const r = await generatePromptAssist({ imageUrls: ['https://example.com/a.jpg'], action: 'generate' });
     expect(r.mock).toBe(true);
   });
-  it('PROMPT_ASSIST_MOCK 强制 mock,即便有 key', async () => {
+  it('多图 sequence + 强制 mock', async () => {
     process.env.GEMINI_API_KEY = 'test-key';
     process.env.PROMPT_ASSIST_MOCK = '1';
-    const r = await generatePromptAssist({ imageUrl: 'https://example.com/a.jpg', action: 'improve', currentPrompt: 'tilt up' });
+    const r = await generatePromptAssist({
+      imageUrls: ['https://example.com/a.jpg', 'https://example.com/b.jpg'],
+      action: 'generate',
+      mode: 'sequence',
+    });
     expect(r.mock).toBe(true);
-    expect(r.suggestedPrompt).toContain('tilt up');
+  });
+  it('空 imageUrls 抛错', async () => {
+    await expect(generatePromptAssist({ imageUrls: [], action: 'generate' })).rejects.toThrow(/image required/);
   });
 });

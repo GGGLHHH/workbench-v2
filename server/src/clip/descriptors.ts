@@ -84,6 +84,8 @@ export const falKlingDescriptor = (id: string): HttpDescriptor => ({
       body: {
         prompt: ctx.prompt,
         image_url: ctx.image.publicUrl || ctx.image.dataUri,
+        // 关键帧模式 A:末帧作 tail_image_url(Kling 首尾帧),缺省则普通单图 i2v。
+        ...(ctx.endImage ? { tail_image_url: ctx.endImage.publicUrl || ctx.endImage.dataUri } : {}),
         duration: String(snapDuration(ctx.durations, ctx.durationSeconds ?? process.env.FAL_KLING_DURATION ?? 5)),
         aspect_ratio: ctx.aspectRatio,
         negative_prompt: envStr(
@@ -121,7 +123,11 @@ export const lumaDescriptor = (id: string): HttpDescriptor => ({
       prompt: ctx.prompt,
       model: ctx.model,
       aspect_ratio: ctx.aspectRatio,
-      keyframes: { frame0: { type: 'image', url: ctx.image.publicUrl } },
+      // 关键帧模式 A:frame0=首帧、frame1=末帧(Luma keyframes);缺末帧则仅 frame0(普通 i2v)。
+      keyframes: {
+        frame0: { type: 'image', url: ctx.image.publicUrl },
+        ...(ctx.endImage ? { frame1: { type: 'image', url: ctx.endImage.publicUrl } } : {}),
+      },
     },
   }),
   getStatus: ({ jobId, http }) =>

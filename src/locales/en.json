@@ -31,6 +31,17 @@
     "assistDone": "Prompt drafted",
     "assistMock": "Offline sample prompt (GEMINI_API_KEY not set)",
     "assistFailed": "Prompt assist failed",
+    "groupModeBatch": "One clip each",
+    "groupModeSequence": "One sequence",
+    "groupBatchHint": "{{total}} images → {{total}} clips",
+    "groupSequenceHint": "First → last as one clip ({{total}} images, first & last frames only)",
+    "groupFirst": "First",
+    "groupLast": "Last",
+    "groupGenerate": "Generate",
+    "groupAssist": "AI prompt",
+    "groupSeqUnsupported": "Provider has no keyframe support",
+    "groupBatchPartial": "{{failed}} of {{total}} clips failed",
+    "groupResults": "Clips using these images ({{count}})",
     "generate": "Generate",
     "generating": "Generating…",
     "done": "Clip generated",
@@ -225,7 +236,9 @@
       "copy": "Copy",
       "cut": "Cut",
       "duplicate": "Duplicate",
-      "sendToBack": "Send to back"
+      "group": "Group",
+      "sendToBack": "Send to back",
+      "ungroup": "Ungroup"
     },
     "textPanel": {
       "align": "Align",

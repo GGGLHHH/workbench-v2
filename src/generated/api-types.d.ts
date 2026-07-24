@@ -736,6 +736,7 @@ export interface components {
             label: string;
             durations: components["schemas"]["BffDurations"];
             referenceImages: components["schemas"]["BffReferenceSupport"];
+            keyframes: components["schemas"]["BffReferenceSupport"];
             configured: boolean;
             configurationIssue?: null | string;
         };
@@ -753,6 +754,8 @@ export interface components {
             focusSubject?: string;
             lightTransition?: string;
             referenceImageUrls?: string[];
+            endImageUrl?: string;
+            sourceImageRefs?: string[];
         };
         BffClipTask: {
             taskId: string;
@@ -766,6 +769,7 @@ export interface components {
         BffClipRecord: {
             clipId: string;
             sourceImageRef: string;
+            sourceImageRefs?: string[];
             referenceImageRefs?: string[];
             url: string;
             provider: string;
@@ -787,9 +791,10 @@ export interface components {
             clips: components["schemas"]["BffClipRecord"][];
         };
         BffPromptAssistRequest: {
-            imageUrl: string;
+            imageUrls: string[];
             action?: string;
             currentPrompt?: string;
+            mode?: string;
         };
         BffPromptAssist: {
             suggestedPrompt: string;

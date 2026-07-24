@@ -31,6 +31,17 @@
     "assistDone": "已生成提示词",
     "assistMock": "离线示例提示词(未配置 GEMINI_API_KEY)",
     "assistFailed": "提示词生成失败",
+    "groupModeBatch": "各生成一条",
+    "groupModeSequence": "串成一条",
+    "groupBatchHint": "{{total}} 张各生成一条 clip",
+    "groupSequenceHint": "首图→末图串成一条({{total}} 张,仅用首尾两帧)",
+    "groupFirst": "首帧",
+    "groupLast": "末帧",
+    "groupGenerate": "组合生成",
+    "groupAssist": "AI 提示词",
+    "groupSeqUnsupported": "该 provider 不支持首尾帧",
+    "groupBatchPartial": "{{total}} 条中 {{failed}} 条失败",
+    "groupResults": "涉及本组图片的 clip({{count}})",
     "generate": "生成",
     "generating": "生成中…",
     "done": "视频已生成",
@@ -225,7 +236,9 @@
       "copy": "复制",
       "cut": "剪切",
       "duplicate": "创建副本",
-      "sendToBack": "置于底层"
+      "group": "组合",
+      "sendToBack": "置于底层",
+      "ungroup": "取消组合"
     },
     "textPanel": {
       "align": "对齐",

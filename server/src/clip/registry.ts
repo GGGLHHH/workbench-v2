@@ -1,6 +1,6 @@
 // provider 注册表:目录 + 别名 + 时长/参考图能力 + 配置校验 + 工厂。端口自 xchangeai providers.js 的
 // 语义,但把 13 个 class 收敛成「元数据 + build 工厂」的声明式表。默认 provider = ltx-2-3-fast。
-import type { Durations, ProviderDeps, ProviderOption, ProviderOptionWithStatus, ReferenceSupport, VideoProvider } from './types';
+import type { Durations, KeyframeSupport, ProviderDeps, ProviderOption, ProviderOptionWithStatus, ReferenceSupport, VideoProvider } from './types';
 import { snapDuration, MAX_CLIP_DURATION_SECONDS, MIN_CLIP_DURATION_SECONDS } from './constants';
 import { envInt } from './env';
 import { HttpVideoProvider } from './http-provider';
@@ -34,6 +34,10 @@ const ltxDurations = (): Durations => {
 const NO_REFERENCE: ReferenceSupport = { supported: false, max: 0 };
 const REF_3: ReferenceSupport = { supported: true, max: 3 };
 
+// —— 关键帧能力(方案 A 首尾帧,max=2)。仅 Kling(tail_image_url)/Luma(frame1)支持;mock 也开(供本地测 A,不打真 API)。——
+const NO_KEYFRAMES: KeyframeSupport = { supported: false, max: 0 };
+const KF_2: KeyframeSupport = { supported: true, max: 2 };
+
 // —— 默认 model(env 覆盖)——
 const MODELS = {
   VEO: 'veo-3.1-generate-preview',
@@ -58,6 +62,7 @@ type ProviderDefinition = {
   durations: () => Durations;
   requiredEnv: string[];
   referenceImages: ReferenceSupport;
+  keyframes?: KeyframeSupport; // 缺省 = 不支持(NO_KEYFRAMES)
   build: (deps: ProviderDeps) => VideoProvider;
 };
 
@@ -75,6 +80,7 @@ const PROVIDER_DEFINITIONS: ProviderDefinition[] = [
     durations: () => ANY_DURATION,
     requiredEnv: [],
     referenceImages: NO_REFERENCE,
+    keyframes: KF_2, // mock 也接受末帧(忽略实际混合),供本地端到端测 A 模式
     build: (deps) => new MockVideoProvider(deps),
   },
   {
@@ -155,6 +161,7 @@ const PROVIDER_DEFINITIONS: ProviderDefinition[] = [
     durations: () => FIVE_OR_TEN,
     requiredEnv: ['FAL_KEY'],
     referenceImages: NO_REFERENCE,
+    keyframes: KF_2, // Kling 首尾帧:tail_image_url
     build: http(falKlingDescriptor('fal-kling-2.1-standard'), () => process.env.FAL_KLING_MODEL || MODELS.FAL_KLING, () => FIVE_OR_TEN),
   },
   {
@@ -165,6 +172,7 @@ const PROVIDER_DEFINITIONS: ProviderDefinition[] = [
     durations: () => MODEL_PICKS,
     requiredEnv: ['LUMA_API_KEY'],
     referenceImages: NO_REFERENCE,
+    keyframes: KF_2, // Luma keyframes:frame1
     build: http(lumaDescriptor('luma-ray-2'), () => process.env.LUMA_RAY_2_MODEL || MODELS.LUMA_RAY_2, () => MODEL_PICKS),
   },
   {
@@ -175,6 +183,7 @@ const PROVIDER_DEFINITIONS: ProviderDefinition[] = [
     durations: () => MODEL_PICKS,
     requiredEnv: ['LUMA_API_KEY'],
     referenceImages: NO_REFERENCE,
+    keyframes: KF_2, // Luma keyframes:frame1
     build: http(lumaDescriptor('luma-ray-2-flash'), () => process.env.LUMA_RAY_2_FLASH_MODEL || MODELS.LUMA_RAY_2_FLASH, () => MODEL_PICKS),
   },
   {
@@ -239,6 +248,9 @@ export const getProviderDurations = (name: string): Durations => getDefinition(n
 export const getProviderReferenceSupport = (name: string): ReferenceSupport =>
   getDefinition(name)?.referenceImages ?? NO_REFERENCE;
 
+export const getProviderKeyframeSupport = (name: string): KeyframeSupport =>
+  getDefinition(name)?.keyframes ?? NO_KEYFRAMES;
+
 export const snapProviderDuration = (name: string, seconds: unknown): number =>
   snapDuration(getProviderDurations(name), seconds);
 
@@ -249,6 +261,7 @@ const publicOption = (def: ProviderDefinition): ProviderOption => ({
   model: def.model(),
   durations: def.durations(),
   referenceImages: def.referenceImages,
+  keyframes: def.keyframes ?? NO_KEYFRAMES,
   requiredEnv: def.requiredEnv,
 });
 

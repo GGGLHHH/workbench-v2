@@ -6,7 +6,7 @@ import path from 'node:path';
 import { newId } from '@gedatou/shared';
 import { writeBuffer } from '../storage';
 import type { ClipTask, FetchLike, VideoProvider } from './types';
-import { createProvider, formatProviderError, getProviderName, getProviderReferenceSupport } from './registry';
+import { createProvider, formatProviderError, getProviderKeyframeSupport, getProviderName, getProviderReferenceSupport } from './registry';
 import { resolveImageInput, resolveReferenceImages } from './image-input';
 import { appendClip } from './clip-index';
 import { probeVideo, type ProbeResult } from './probe';
@@ -20,9 +20,12 @@ export type EnqueueClipInput = {
   durationSeconds?: number;
   aspectRatio?: string;
   referenceImageUrls?: string[];
+  /** 末帧(关键帧模式 A):设了且 provider 支持关键帧时,image=首帧、endImageUrl=末帧 → 一条穿越视频 */
+  endImageUrl?: string;
   // —— 绑定 + 元数据(A 方案):齐全时生成成功后写本机 clip 索引;缺则退化为无状态生成 ——
   projectId?: string;
-  sourceImageRef?: string; // 从哪张图生成(稳定 id)
+  sourceImageRef?: string; // 主源图(单图/批量=该图;序列=首图)
+  sourceImageRefs?: string[]; // 归属的全部源图 ref(序列=全组成员;缺省视为 [sourceImageRef])
   referenceImageRefs?: string[]; // 用到的参考角度的稳定 id
   promptBody?: string; // 前端运镜参数(存进记录,可回填再生)
   cameraMove?: string;
@@ -74,10 +77,16 @@ export const enqueueClip = (input: EnqueueClipInput, deps: ClipServiceDeps = {})
       const referenceImages = refUrls.length
         ? await resolveReferenceImages(refUrls, provider.inputMode, fetchImpl)
         : [];
+      // 关键帧模式 A:仅当传了末帧且 provider 支持关键帧时解析(否则忽略,退化为普通单图 i2v)
+      const endImage =
+        input.endImageUrl && getProviderKeyframeSupport(providerName).supported
+          ? await resolveImageInput(input.endImageUrl, provider.inputMode, fetchImpl)
+          : undefined;
       const result = await provider.generateClip({
         image,
         prompt: input.prompt,
         referenceImages,
+        endImage,
         outputPath,
         aspectRatio: input.aspectRatio,
         durationSeconds: input.durationSeconds,
@@ -101,6 +110,7 @@ export const enqueueClip = (input: EnqueueClipInput, deps: ClipServiceDeps = {})
           clipId: taskId,
           projectId: input.projectId,
           sourceImageRef: input.sourceImageRef,
+          sourceImageRefs: input.sourceImageRefs?.length ? input.sourceImageRefs : undefined,
           referenceImageRefs: usedRefRefs.length ? usedRefRefs : undefined,
           url,
           provider: result.provider,

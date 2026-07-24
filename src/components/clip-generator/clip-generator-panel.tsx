@@ -4,19 +4,19 @@
 // 高亮当前形态。零改库:替换只重写 items[itemId](见 lib/replace-clip)。take 卡片对齐 RendersList 的 MediaCard。
 import { useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Check, ImagePlus, Loader2, Plus, RotateCcw, Sparkles, Trash2, Wand2 } from 'lucide-react'
+import { ImagePlus, Loader2, RotateCcw, Sparkles, Wand2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { useEditor } from '@gedatou/editor'
 import {
   invalidateProjectClips,
   useClipProviders,
   useClipTask,
-  useDeleteClip,
   useGenerateClip,
   useProjectClips,
 } from '@/api/clips'
 import { useClipPromptAssist } from '@/api/prompt-assist'
-import { addProjectAssetToEditor } from '@/lib/add-to-editor'
+import { CAMERA_MOVES, ClipGroupGenerate, type GroupImage } from './clip-group-generate'
+import { ClipTakeCard, DeleteTakeButton } from './clip-take-card'
 import { replaceItemWithClip, revertItemToPhoto } from '@/lib/replace-clip'
 import { MediaCard, Thumb, duration as fmtDuration } from '@/components/media-card'
 import { MediaLightbox, useMediaLightbox, type ViewerItem } from '@/components/media-lightbox'
@@ -24,9 +24,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select'
 import { Textarea } from '@/components/ui/textarea'
-import { cn } from '@/lib/utils'
 
-const CAMERA_MOVES = ['auto', 'slowPushIn', 'slowPullBack', 'panLeft', 'panRight', 'tiltUp', 'tiltDown', 'staticHold'] as const
 const PHOTO = 'photo' as const
 
 // /bff/content/<id> → content_id(与 BFF refOf 一致);否则整串 url。
@@ -42,36 +40,6 @@ type Binding = {
   current: string // clipId | 'photo'
 }
 
-// 删除 take:首点转确认(红勾),再点才真删;失焦即撤销。各按钮自持 mutation → 删一条不会禁掉其它。
-// isCurrent(正在用的 clip)时禁用并给出提示,不允许删。对齐 AssetGrid 的二次确认约定。
-function DeleteTakeButton({ clipId, projectId, disabled }: { clipId: string; projectId: string; disabled?: boolean }) {
-  const { t } = useTranslation()
-  const del = useDeleteClip()
-  const [confirm, setConfirm] = useState(false)
-  const label = disabled ? t('clipGen.cannotDeleteCurrent') : confirm ? t('clipGen.confirmDelete') : t('clipGen.deleteTake')
-  return (
-    <Button
-      size="icon-xs"
-      variant="ghost"
-      className={cn('text-muted-foreground hover:text-destructive', confirm && 'text-destructive')}
-      aria-label={label}
-      title={label}
-      disabled={disabled || del.isPending}
-      onBlur={() => setConfirm(false)}
-      onClick={() => {
-        if (confirm) {
-          setConfirm(false)
-          del.mutate({ clipId, projectId })
-        } else {
-          setConfirm(true)
-        }
-      }}
-    >
-      {del.isPending ? <Loader2 className="animate-spin" /> : confirm ? <Check /> : <Trash2 />}
-    </Button>
-  )
-}
-
 export function ClipGeneratorPanel({ projectId }: { projectId: string | null }) {
   const { t } = useTranslation()
 
@@ -79,6 +47,24 @@ export function ClipGeneratorPanel({ projectId }: { projectId: string | null }) 
   const selectedId = useEditor((s) => (s.selectedItemIds.length === 1 ? s.selectedItemIds[0] : null))
   const item = useEditor((s) => (selectedId ? s.undoable.items[selectedId] : null))
   const imageAsset = useEditor((s) => (item && item.type === 'image' ? s.undoable.assets[item.assetId] : null))
+
+  // 组合入参:选中 ≥2 张图片(画布成组后 setSelected 会整组选中)→ 首图 hero + 其余参考图。
+  const selectedItemIds = useEditor((s) => s.selectedItemIds)
+  const allItems = useEditor((s) => s.undoable.items)
+  const allAssets = useEditor((s) => s.undoable.assets)
+  const groupImages = useMemo<GroupImage[]>(() => {
+    if (selectedItemIds.length < 2) return []
+    const out: GroupImage[] = []
+    for (const id of selectedItemIds) {
+      const it = allItems[id]
+      if (it?.type !== 'image') continue
+      const a = allAssets[it.assetId]
+      if (a) out.push({ ref: refOf(a.url), url: a.url, name: a.filename, itemId: id })
+    }
+    return out.length >= 2 ? out : []
+  }, [selectedItemIds, allItems, allAssets])
+  // 序列拖拽排序 → 持久化:库把顺序写进组的 itemIds(随项目 state 存,跨刷新)。
+  const reorderGroupItems = useEditor((s) => s.reorderGroupItems)
   const clipsQ = useProjectClips(projectId, null)
   const allClips = clipsQ.data ?? []
   const lightbox = useMediaLightbox()
@@ -103,8 +89,13 @@ export function ClipGeneratorPanel({ projectId }: { projectId: string | null }) 
     return null
   }, [item, imageAsset, allClips])
 
+  // take 命中:主 ref 相等,或 sourceImageRefs 含该 ref(序列 clip 挂全组 → 每个成员单独选中也看得到,
+  // 与 server listClips / 组结果区一致;这样"抗拆散归属"在单图面板也兑现)。
   const takes = useMemo(
-    () => (binding ? allClips.filter((c) => c.sourceImageRef === binding.sourceImageRef) : []),
+    () =>
+      binding
+        ? allClips.filter((c) => c.sourceImageRef === binding.sourceImageRef || c.sourceImageRefs?.includes(binding.sourceImageRef))
+        : [],
     [allClips, binding],
   )
 
@@ -158,19 +149,6 @@ export function ClipGeneratorPanel({ projectId }: { projectId: string | null }) 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [task?.status])
 
-  const [adding, setAdding] = useState<string | null>(null)
-  const onAddToEditor = async (take: { clipId: string; url: string; durationSeconds?: number | null }) => {
-    setAdding(take.clipId)
-    try {
-      await addProjectAssetToEditor({ id: take.clipId, url: take.url, kind: 'video', durationSeconds: take.durationSeconds ?? undefined })
-      toast.success(t('clipGen.addedToEditor'))
-    } catch {
-      toast.error(t('clipGen.addFailed'))
-    } finally {
-      setAdding(null)
-    }
-  }
-
   if (!projectId) return null
 
   // 源图还是 blob:(本地上传尚未落到渲染服务)时,服务端 fetch 不到 → 禁止生成,等上传完成。
@@ -202,7 +180,7 @@ export function ClipGeneratorPanel({ projectId }: { projectId: string | null }) 
   const onAssist = (action: 'generate' | 'improve') => {
     if (!binding || awaitingUpload) return
     assist.mutate(
-      { imageUrl: binding.photoUrl, action, currentPrompt: action === 'improve' ? promptBody.trim() : undefined },
+      { imageUrls: [binding.photoUrl], action, currentPrompt: action === 'improve' ? promptBody.trim() : undefined },
       {
         onSuccess: (res) => {
           setPromptBody(res.suggestedPrompt)
@@ -231,7 +209,10 @@ export function ClipGeneratorPanel({ projectId }: { projectId: string | null }) 
           {t('clipGen.resolving')}
         </div>
       ) : !binding ? (
-        // 无选中(或选中非图片/clip 块)→ 全项目 clip 集合:浏览 / 加入编辑器(新块)/ 删除
+        // 选中 ≥2 张图片(画布成组后整组选中)→ 组合生成(首图 hero + 其余参考图)
+        groupImages.length >= 2 ? (
+          <ClipGroupGenerate projectId={projectId} images={groupImages} onReorder={reorderGroupItems} />
+        ) : // 无选中(或选中非图片/clip 块)→ 全项目 clip 集合:浏览 / 加入编辑器(新块)/ 删除
         allClips.length === 0 ? (
           <div className="flex items-center gap-2 rounded-md border border-dashed px-2.5 py-3 text-xs text-muted-foreground">
             <ImagePlus className="size-4 shrink-0" />
@@ -240,36 +221,7 @@ export function ClipGeneratorPanel({ projectId }: { projectId: string | null }) 
         ) : (
           <div className="flex flex-col gap-2">
             {allClips.map((take, i) => (
-              <MediaCard
-                key={take.clipId}
-                onOpen={(ev) => lightbox.open(i, ev)}
-                title={take.provider}
-                titleAttr={take.provider}
-                thumbnail={<Thumb url={take.url} kind="video" className="size-14" />}
-                footer={
-                  <>
-                    <Button
-                      size="xs"
-                      variant="ghost"
-                      className="text-muted-foreground"
-                      disabled={adding === take.clipId}
-                      onClick={() => void onAddToEditor(take)}
-                    >
-                      {adding === take.clipId ? <Loader2 className="animate-spin" /> : <Plus />} {t('clipGen.addToEditor')}
-                    </Button>
-                    <DeleteTakeButton clipId={take.clipId} projectId={projectId} />
-                  </>
-                }
-              >
-                <span className="flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-muted-foreground tabular-nums">
-                  {take.width && take.height ? (
-                    <span>
-                      {take.width}×{take.height}
-                    </span>
-                  ) : null}
-                  {take.durationSeconds ? <span>{fmtDuration(take.durationSeconds)}</span> : null}
-                </span>
-              </MediaCard>
+              <ClipTakeCard key={take.clipId} take={take} projectId={projectId} onOpen={(ev) => lightbox.open(i, ev)} />
             ))}
           </div>
         )

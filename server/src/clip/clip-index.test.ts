@@ -58,6 +58,15 @@ describe('clip index', () => {
     expect(await listClips('p1', 'nope')).toEqual([]);
   });
 
+  it('序列 clip 挂全组成员 → 在每个成员名下都出现(sourceImageRefs 命中)', async () => {
+    await appendClip('p1', rec({ clipId: 'seq', sourceImageRef: 'img-a', sourceImageRefs: ['img-a', 'img-b', 'img-c'] }));
+    await appendClip('p1', rec({ clipId: 'solo', sourceImageRef: 'img-b' })); // 单图/旧记录:无 sourceImageRefs
+    expect((await listClips('p1', 'img-a')).map((r) => r.clipId)).toEqual(['seq']);
+    expect((await listClips('p1', 'img-b')).map((r) => r.clipId).sort()).toEqual(['seq', 'solo']);
+    expect((await listClips('p1', 'img-c')).map((r) => r.clipId)).toEqual(['seq']); // 拆散/删了首图也还能从别的成员看到
+    expect(await listClips('p1', 'img-z')).toEqual([]);
+  });
+
   it('removeClip drops the record and deletes the clip file', async () => {
     await mkdir(path.join(tmp, 'clips'), { recursive: true });
     const clipFile = path.join(tmp, 'clips', 'c9.mp4');

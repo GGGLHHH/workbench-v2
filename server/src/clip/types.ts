@@ -16,6 +16,9 @@ export type Durations = {
 /** 参考图能力。max 含 hero 本身(如 Veo 共 3 张 = hero + 2 参考)。 */
 export type ReferenceSupport = { supported: boolean; max: number };
 
+/** 关键帧能力(方案 A:首尾帧)。max = 可用关键帧数(v1 = 2:首帧 + 末帧)。 */
+export type KeyframeSupport = { supported: boolean; max: number };
+
 /** 解析后可直接喂给 provider 的图片(按 inputMode 只填其一)。 */
 export type ResolvedImage = {
   publicUrl?: string; // public-url 模式
@@ -32,6 +35,8 @@ export type ClipInput = {
   image: ResolvedImage;
   prompt: string; // 已编译好的运镜 prompt(BFF 负责合成,server 不再加工)
   referenceImages?: ResolvedImage[];
+  /** 末帧(关键帧模式 A):image=首帧、endImage=末帧,provider 插值出一条穿越视频。仅支持关键帧的 provider 用。 */
+  endImage?: ResolvedImage;
   outputPath: string; // provider 把成片写到这里(临时路径),service 再落 storage
   aspectRatio?: string; // 默认 '16:9'
   durationSeconds?: number; // 请求时长;provider 内部按能力吸附
@@ -69,6 +74,7 @@ export type ProviderOption = {
   model: string;
   durations: Durations;
   referenceImages: ReferenceSupport;
+  keyframes: KeyframeSupport;
   requiredEnv: string[];
 };
 

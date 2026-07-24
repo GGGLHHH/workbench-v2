@@ -20,6 +20,8 @@ type Json = Record<string, any>;
 export type SubmitContext = {
   image: ResolvedImage;
   referenceImages: ResolvedImage[];
+  /** 末帧(关键帧模式 A):支持关键帧的 descriptor 在 buildSubmit 里按各家字段挂上(Kling tail_image_url / Luma frame1) */
+  endImage?: ResolvedImage;
   prompt: string;
   aspectRatio: string;
   durationSeconds: number | undefined;
@@ -73,6 +75,7 @@ export class HttpVideoProvider implements VideoProvider {
       image,
       prompt,
       referenceImages = [],
+      endImage,
       outputPath,
       aspectRatio = '16:9',
       durationSeconds,
@@ -81,11 +84,12 @@ export class HttpVideoProvider implements VideoProvider {
     await mkdir(path.dirname(outputPath), { recursive: true });
     const d = this.descriptor;
 
-    // public-url:校验输入图(含各参考图)为公网 https,否则外部 provider 拉不到。
+    // public-url:校验输入图(含各参考图、末帧)为公网 https,否则外部 provider 拉不到。
     if (d.inputMode === 'public-url') {
       const allowHttp = envBool('ALLOW_HTTP_IMAGE_URLS', false);
       validateHttpsImageUrl(image.publicUrl, d.id, allowHttp);
       referenceImages.forEach((r) => validateHttpsImageUrl(r.publicUrl, d.id, allowHttp));
+      if (endImage) validateHttpsImageUrl(endImage.publicUrl, d.id, allowHttp);
     }
 
     const apiKey = process.env[d.apiKeyEnv];
@@ -96,6 +100,7 @@ export class HttpVideoProvider implements VideoProvider {
     const submit = d.buildSubmit({
       image,
       referenceImages,
+      endImage,
       prompt,
       aspectRatio,
       durationSeconds,
