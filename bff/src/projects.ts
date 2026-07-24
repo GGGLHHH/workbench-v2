@@ -1,4 +1,5 @@
 import type { FastifyInstance } from 'fastify';
+import { nullable, pageSchema } from './schema-helpers';
 import {
   DEFAULT_COMPOSITION_HEIGHT,
   DEFAULT_COMPOSITION_WIDTH,
@@ -317,7 +318,6 @@ export const registerProjectRoutes = (app: FastifyInstance): void => {
       statusCounts: { type: 'object', additionalProperties: { type: 'integer' } },
     },
   });
-  const nullable = (type: 'string' | 'number') => ({ type: [type, 'null'] } as const);
   app.addSchema({
     $id: 'BffTag',
     type: 'object',
@@ -328,17 +328,7 @@ export const registerProjectRoutes = (app: FastifyInstance): void => {
       displayName: { type: 'string' }, // 展示名(如 Living room)
     },
   });
-  app.addSchema({
-    $id: 'BffTagPage',
-    type: 'object',
-    required: ['items', 'total', 'limit', 'offset'],
-    properties: {
-      items: { type: 'array', items: { $ref: 'BffTag#' } },
-      total: { type: 'integer' },
-      limit: { type: 'integer' },
-      offset: { type: 'integer' },
-    },
-  });
+  app.addSchema(pageSchema('BffTagPage', 'BffTag'));
   app.addSchema({
     $id: 'BffPromptPreset',
     type: 'object',
@@ -349,17 +339,7 @@ export const registerProjectRoutes = (app: FastifyInstance): void => {
       body: { type: 'string' }, // prompt 正文
     },
   });
-  app.addSchema({
-    $id: 'BffPromptPresetPage',
-    type: 'object',
-    required: ['items', 'total', 'limit', 'offset'],
-    properties: {
-      items: { type: 'array', items: { $ref: 'BffPromptPreset#' } },
-      total: { type: 'integer' },
-      limit: { type: 'integer' },
-      offset: { type: 'integer' },
-    },
-  });
+  app.addSchema(pageSchema('BffPromptPresetPage', 'BffPromptPreset'));
   app.addSchema({
     $id: 'BffProjectAsset',
     type: 'object',
@@ -397,17 +377,7 @@ export const registerProjectRoutes = (app: FastifyInstance): void => {
       assignees: { type: 'array', items: { $ref: 'BffOption#' } },
     },
   });
-  app.addSchema({
-    $id: 'BffOptionPage',
-    type: 'object',
-    required: ['items', 'total', 'limit', 'offset'],
-    properties: {
-      items: { type: 'array', items: { $ref: 'BffOption#' } },
-      total: { type: 'integer' },
-      limit: { type: 'integer' },
-      offset: { type: 'integer' },
-    },
-  });
+  app.addSchema(pageSchema('BffOptionPage', 'BffOption'));
   app.addSchema({
     $id: 'BffProjectMetaRequest',
     type: 'object',
@@ -504,17 +474,7 @@ export const registerProjectRoutes = (app: FastifyInstance): void => {
     required: ['id', 'updatedAt'],
     properties: { id: { type: 'string' }, updatedAt: { type: 'string' } },
   });
-  app.addSchema({
-    $id: 'BffProjectPage',
-    type: 'object',
-    required: ['items', 'total', 'limit', 'offset'],
-    properties: {
-      items: { type: 'array', items: { $ref: 'BffProjectSummary#' } },
-      total: { type: 'integer' },
-      limit: { type: 'integer' },
-      offset: { type: 'integer' },
-    },
-  });
+  app.addSchema(pageSchema('BffProjectPage', 'BffProjectSummary'));
   // 评论:项目级与资产级同一条时间线形态(下游也是同一个 CommentModel,只是 entity_type 不同),
   // 故共用一套 schema —— 两处 UI 也就能共用一个 CommentThread。
   app.addSchema({

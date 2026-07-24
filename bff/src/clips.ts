@@ -2,6 +2,7 @@
 // ①图片引用解析(/bff/content/<id> → xchangeai 公网 download_url)②prompt 合成 ③provider 目录/任务态归一。
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { getUpload } from './generated/client';
+import { nullable } from './schema-helpers';
 import { config } from './config';
 import { forwardAuth } from './xchange-client';
 import { compileClipPrompt, type CameraMove, type LightTransition } from './clip-prompt';
@@ -109,7 +110,6 @@ export const registerClipRoutes = (app: FastifyInstance): void => {
     },
   });
   // 一条已生成的 take(绑定索引项)。丢掉 server-only 的 compiledPrompt/providerJobId。
-  const nn = (t: 'string' | 'number') => ({ type: [t, 'null'] } as const);
   app.addSchema({
     $id: 'BffClipRecord',
     type: 'object',
@@ -121,18 +121,18 @@ export const registerClipRoutes = (app: FastifyInstance): void => {
       referenceImageRefs: { type: 'array', items: { type: 'string' } },
       url: { type: 'string' },
       provider: { type: 'string' },
-      model: nn('string'),
-      aspectRatio: nn('string'),
-      requestedDurationSeconds: nn('number'),
-      durationSeconds: nn('number'),
-      width: nn('number'),
-      height: nn('number'),
-      fps: nn('number'),
-      sizeBytes: nn('number'),
-      promptBody: nn('string'),
-      cameraMove: nn('string'),
-      focusSubject: nn('string'),
-      lightTransition: nn('string'),
+      model: nullable('string'),
+      aspectRatio: nullable('string'),
+      requestedDurationSeconds: nullable('number'),
+      durationSeconds: nullable('number'),
+      width: nullable('number'),
+      height: nullable('number'),
+      fps: nullable('number'),
+      sizeBytes: nullable('number'),
+      promptBody: nullable('string'),
+      cameraMove: nullable('string'),
+      focusSubject: nullable('string'),
+      lightTransition: nullable('string'),
       createdAt: { type: 'string' },
     },
   });
